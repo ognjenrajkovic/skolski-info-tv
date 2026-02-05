@@ -42,7 +42,6 @@ export default function SchoolTV() {
   const [emergency, setEmergency] = useState('НОРМАЛНО');
   const [activeTab, setActiveTab] = useState(0);
 
-  // 1. Fetch data funkcija
   const fetchData = async () => {
     try {
       const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
@@ -55,36 +54,25 @@ export default function SchoolTV() {
       if (q) setQuotes(q);
       if (sys) setEmergency(sys.value);
     } catch (error) {
-      console.error("Greška pri osvežavanju:", error);
+      console.error("Greška:", error);
     }
   };
 
-  // 2. Real-time Subscription (FIX ZA INSTANT OSVEŽAVANJE)
   useEffect(() => {
     fetchData();
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        fetchData(); // Čim se bilo šta promeni u bilo kojoj tabeli, povuci nove podatke
-      })
-      .subscribe();
-
+    const channel = supabase.channel('realtime-school').on('postgres_changes', { event: '*', schema: 'public' }, () => fetchData()).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // 3. Tajmeri i Vreme
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     const rotation = setInterval(() => setActiveTab((prev) => (prev + 1) % 3), 15000);
     const autoReload = setInterval(() => { if (emergency !== 'УЗБУНА') window.location.reload(); }, 1800000);
-
-    const fetchWeather = () => {
-        fetch('https://api.open-meteo.com/v1/forecast?latitude=44.81&longitude=20.46&current_weather=true')
-        .then(res => res.json())
-        .then(data => setWeather({ temp: Math.round(data.current_weather.temperature) }))
-        .catch(() => {});
-    };
-    fetchWeather();
+    
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.81&longitude=20.46&current_weather=true')
+      .then(res => res.json())
+      .then(data => setWeather({ temp: Math.round(data.current_weather.temperature) }))
+      .catch(() => {});
     
     return () => { clearInterval(timer); clearInterval(rotation); clearInterval(autoReload); }
   }, [emergency]);
@@ -114,11 +102,11 @@ export default function SchoolTV() {
   if (emergency === "УЗБУНА") {
     return (
       <div className="h-screen w-screen bg-red-700 flex flex-col items-center justify-center text-white p-10 overflow-hidden">
-        <div className="absolute inset-0 bg-red-600 animate-[pulse_1s_infinite] opacity-50" />
-        <AlertTriangle size={300} className="relative z-10 drop-shadow-2xl mb-10" />
-        <h1 className="relative z-10 text-[18vh] font-[1000] leading-none mb-5 uppercase tracking-tighter drop-shadow-2xl">УЗБУНА</h1>
-        <div className="relative z-10 bg-white text-red-700 px-20 py-8 rounded-[3rem] shadow-2xl">
-            <p className="text-[6vh] font-black uppercase tracking-tight">Евакуација у току - Пратите наставнике</p>
+        <div className="absolute inset-0 bg-red-600 animate-pulse opacity-50" />
+        <AlertTriangle size={300} className="relative z-10 mb-10 drop-shadow-2xl" />
+        <h1 className="relative z-10 text-[18vh] font-black uppercase tracking-tighter drop-shadow-2xl leading-none">УЗБУНА</h1>
+        <div className="relative z-10 bg-white text-red-700 px-20 py-8 rounded-[3rem] shadow-2xl mt-10">
+            <p className="text-[6vh] font-black uppercase">Евакуација у току</p>
         </div>
       </div>
     );
@@ -128,23 +116,14 @@ export default function SchoolTV() {
     <div className="h-screen w-screen bg-[#F1F5F9] text-slate-800 p-[1.5vh] flex flex-col font-sans overflow-hidden">
       
       {/* HEADER */}
-      <div className="h-[12vh] bg-white rounded-[2.5rem] shadow-[0_15px_40px_rgba(0,0,0,0.04)] flex justify-between items-center px-[4vh] mb-[1.5vh] border border-white">
+      <div className="h-[12vh] bg-white rounded-[2.5rem] shadow-sm flex justify-between items-center px-[4vh] mb-[1.5vh] border border-white">
         <div className="flex items-center gap-[3vh]">
-          {/* LOGO MESTO */}
-            <div className="flex items-center justify-center">
-              <img 
-                src="/logo.png" 
-                alt="Logo škole" 
-                className="h-[9vh] w-auto drop-shadow-md hover:scale-105 transition-transform duration-500"
-                onError={(e) => {
-                  e.target.onerror = null; 
-                  e.target.src = "https://via.placeholder.com/150?text=LOGO"; // Backup ako slika ne postoji
-                }}  
-              />
-            </div>
-          <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-[2.2vh] rounded-[2.2rem] text-white shadow-xl shadow-blue-100">
-             <Clock size={42} strokeWidth={2.5} />
-          </div>
+            <img 
+              src="/logo.png" 
+              alt="Logo" 
+              className="h-[9vh] w-auto drop-shadow-sm"
+              onError={(e) => { e.target.src = "https://via.placeholder.com/150?text=LOGO"; }} 
+            />
           <div>
             <h1 className="text-[4.8vh] font-[1000] tracking-tighter text-slate-800 leading-none mb-1 uppercase">{SCHOOL_NAME}</h1>
             <div className="flex items-center gap-2 text-blue-500 font-bold uppercase tracking-[0.25em] text-[1.6vh]">
@@ -155,7 +134,7 @@ export default function SchoolTV() {
         </div>
         
         <div className="flex items-center gap-[6vh]">
-          <div className="flex items-center gap-3 bg-slate-50/80 px-7 py-3 rounded-3xl border border-slate-100 shadow-inner">
+          <div className="flex items-center gap-3 bg-slate-50 px-7 py-3 rounded-3xl border border-slate-100">
              <Thermometer className="text-orange-500" size={28} />
              <span className="text-[3.8vh] font-black text-slate-700 tabular-nums">{weather.temp}°C</span>
           </div>
@@ -174,8 +153,8 @@ export default function SchoolTV() {
       <div className="flex flex-1 gap-[1.5vh] min-h-0">
         {/* LEVA STRANA */}
         <div className="w-[66%] flex flex-col gap-[1.5vh]">
-          <div className="flex-1 bg-white rounded-[4.5rem] shadow-2xl p-8 flex flex-col items-center justify-center relative border border-white overflow-hidden">
-             <div className="absolute top-10 left-10 opacity-[0.03] text-[40vh] font-[1000] italic select-none leading-none">
+          <div className="flex-1 bg-white rounded-[4.5rem] shadow-xl p-8 flex flex-col items-center justify-center relative border border-white overflow-hidden">
+             <div className="absolute top-10 left-10 opacity-[0.03] text-[40vh] font-black italic leading-none select-none">
                 {status.active.num > 0 ? status.active.num : ""}
              </div>
              
@@ -183,25 +162,25 @@ export default function SchoolTV() {
                 <svg className="absolute h-full w-full rotate-[-90deg]">
                     <circle cx="50%" cy="50%" r="46%" stroke="#F1F5F9" strokeWidth="48" fill="transparent" />
                     <circle cx="50%" cy="50%" r="46%" stroke={status.active.num > 0 ? "#2563eb" : "#10b981"} strokeWidth="48" fill="transparent" 
-                            strokeDasharray="1445" strokeDashoffset={1445 - (1445 * status.progress) / 100} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+                            strokeDasharray="1445" strokeDashoffset={1445 - (1445 * status.progress) / 100} strokeLinecap="round" className="transition-all duration-1000" />
                 </svg>
-                <div className="text-center z-10 bg-white/10 backdrop-blur-sm p-10 rounded-full">
+                <div className="text-center z-10">
                     <span className="text-[2.5vh] font-black text-slate-300 uppercase tracking-[0.5em] block mb-2">Тренутно</span>
                     <h2 className={`text-[11vh] font-[1000] leading-[0.9] tracking-tighter uppercase italic ${status.active.num > 0 ? 'text-slate-800' : 'text-emerald-500'}`}>
                         {status.active.label}
                     </h2>
                     {status.active.num > 0 && (
-                        <div className="mt-8 flex items-center justify-center gap-4 bg-slate-50 px-10 py-3 rounded-full border border-slate-100">
-                            <span className="text-[5vh] font-[1000] text-blue-600 tabular-nums leading-none">{Math.round(status.progress)}%</span>
+                        <div className="mt-8 bg-slate-50 px-10 py-3 rounded-full border border-slate-100 inline-block">
+                            <span className="text-[5vh] font-black text-blue-600 tabular-nums leading-none">{Math.round(status.progress)}%</span>
                         </div>
                     )}
                 </div>
              </div>
           </div>
 
-          <div className="h-[10vh] bg-white p-2 rounded-[3rem] shadow-lg flex justify-around items-center border border-white">
+          <div className="h-[10vh] bg-white p-2 rounded-[3rem] shadow-sm flex justify-around items-center border border-white">
               {status.schedule.filter(s => s.num > 0).map((s, i) => (
-                  <div key={i} className={`flex flex-col items-center px-[1.2vw] py-[0.5vh] rounded-[2rem] transition-all duration-500 ${status.active.label === s.label ? 'bg-blue-600 text-white shadow-xl scale-110' : 'opacity-20'}`}>
+                  <div key={i} className={`flex flex-col items-center px-[1.2vw] py-[0.5vh] rounded-[2rem] transition-all duration-500 ${status.active.label === s.label ? 'bg-blue-600 text-white shadow-lg scale-110' : 'opacity-20'}`}>
                       <span className="text-[2vh] font-black">{s.label}</span>
                       <span className="text-[1.2vh] font-bold opacity-60 uppercase">{s.start}</span>
                   </div>
@@ -210,16 +189,16 @@ export default function SchoolTV() {
         </div>
 
         {/* DESNA STRANA */}
-        <div className="w-[34%] flex flex-col bg-white rounded-[4.5rem] shadow-2xl relative overflow-hidden border border-white">
+        <div className="w-[34%] flex flex-col bg-white rounded-[4.5rem] shadow-xl relative overflow-hidden border border-white">
             <div className="flex-1 p-[4.5vh] overflow-hidden">
                 {activeTab === 0 && (
-                  <div className="animate-in fade-in zoom-in duration-700">
-                    <h3 className="text-[3.5vh] font-black text-orange-500 flex items-center gap-5 mb-[4.5vh] uppercase italic tracking-tighter">
+                  <div className="animate-in fade-in duration-700">
+                    <h3 className="text-[3.5vh] font-black text-orange-500 flex items-center gap-5 mb-[4.5vh] uppercase italic">
                       <div className="bg-orange-100 p-3 rounded-2xl"><Bell size={36} fill="currentColor" /></div> Обавештења
                     </h3>
                     <div className="space-y-[2.5vh]">
                         {announcements.slice(0, 4).map((a, i) => (
-                          <div key={i} className="bg-slate-50/50 p-[3vh] rounded-[2.5rem] border-l-[12px] border-orange-500 text-[2.8vh] font-[900] leading-[1.2] text-slate-700 shadow-sm">
+                          <div key={i} className="bg-slate-50 p-[3vh] rounded-[2.5rem] border-l-[12px] border-orange-500 text-[2.8vh] font-[900] leading-[1.2] text-slate-700">
                             {a.text}
                           </div>
                         ))}
@@ -228,9 +207,40 @@ export default function SchoolTV() {
                 )}
                 {activeTab === 1 && (
                   <div className="animate-in slide-in-from-right duration-700">
-                    <h3 className="text-[3.5vh] font-black text-pink-500 flex items-center gap-5 mb-[4.5vh] uppercase italic tracking-tighter">
+                    <h3 className="text-[3.5vh] font-black text-pink-500 flex items-center gap-5 mb-[4.5vh] uppercase italic">
                       <div className="bg-pink-100 p-3 rounded-2xl"><Cake size={36} fill="currentColor" /></div> Рођендани
                     </h3>
                     <div className="space-y-[1.8vh]">
                         {birthdays.length > 0 ? birthdays.map((b, i) => (
-                          <div key={i} className="flex justify-between items-center bg-gradient-to-r from-pink-50 to-transparent p-[2.5vh] rounded-[2.5rem] border border-pink-
+                          <div key={i} className="flex justify-between items-center bg-gradient-to-r from-pink-50 to-transparent p-[2.5vh] rounded-[2.5rem] border border-pink-100 text-[3.2vh] font-black text-pink-700">
+                            <span>{b.name}</span>
+                            <span className="text-[2vh] bg-white px-5 py-1 rounded-full shadow-sm">{b.class_name}</span>
+                          </div>
+                        )) : <div className="mt-20 text-center text-slate-300 font-black uppercase text-[2.2vh]">Нема рођендана</div>}
+                    </div>
+                  </div>
+                )}
+                {activeTab === 2 && (
+                  <div className="animate-in zoom-in duration-700 h-full flex flex-col items-center justify-center text-center p-6">
+                    <Quote size={80} className="text-blue-100 mb-8" />
+                    {quotes.length > 0 ? (
+                        <>
+                            <h3 className="text-[3.8vh] font-black text-slate-800 italic leading-[1.2] mb-10">"{quotes[quotes.length-1].text}"</h3>
+                            <p className="text-[2.2vh] font-black text-blue-500 uppercase tracking-widest">— {quotes[quotes.length-1].author}</p>
+                        </>
+                    ) : <span className="text-slate-200 font-black text-[3vh] italic tracking-widest uppercase">Знање је моћ</span>}
+                  </div>
+                )}
+            </div>
+            
+            {/* ULTRA-TANKI PROGRESS BAR */}
+            <div className="h-[0.8vh] w-full bg-slate-50 px-1 flex items-center">
+                <div className="h-[0.4vh] bg-blue-600 rounded-full animate-[progress_15s_linear_infinite]" />
+            </div>
+        </div>
+      </div>
+
+      <style jsx>{` @keyframes progress { from { width: 0%; } to { width: 100%; } } `}</style>
+    </div>
+  );
+}
