@@ -1,106 +1,109 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Send, Trash2, AlertCircle, Cake, Bell, Lock, Unlock } from 'lucide-react';
+import { Send, Trash2, AlertCircle, Cake, Bell, Quote, Lock } from 'lucide-react';
 
 export default function AdminPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [ann, setAnn] = useState([]);
-  const [newAnn, setNewAnn] = useState('');
-  const [bday, setBday] = useState({ name: '', class_name: '' });
+  const [activeView, setActiveView] = useState('ann'); // ann, bday, quote
+  const [data, setData] = useState({ ann: [], bdays: [], quotes: [] });
   const [emergency, setEmergency] = useState('НОРМАЛНО');
+  
+  // Forme
+  const [newAnn, setNewAnn] = useState('');
+  const [newBday, setNewBday] = useState({ name: '', class_name: '' });
+  const [newQuote, setNewQuote] = useState({ text: '', author: '' });
 
-  const ADMIN_PASSWORD = "karadjordje2024"; // ОВДЕ ПРОМЕНИ ШИФРУ
+  const ADMIN_PASSWORD = "karadjordje2024";
 
-  useEffect(() => {
-    if (isAuthenticated) fetchData();
-  }, [isAuthenticated]);
+  useEffect(() => { if (isAuthenticated) fetchData(); }, [isAuthenticated]);
 
   const fetchData = async () => {
-    const { data: a } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
-    const { data: s } = await supabase.from('system_settings').select('*').eq('key', 'emergency').single();
-    if (a) setAnn(a);
-    if (s) setEmergency(s.value);
+    const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+    const { data: bdays } = await supabase.from('birthdays').select('*');
+    const { data: quotes } = await supabase.from('quotes').select('*');
+    const { data: sys } = await supabase.from('system_settings').select('*').eq('key', 'emergency').single();
+    setData({ ann: ann || [], bdays: bdays || [], quotes: quotes || [] });
+    if (sys) setEmergency(sys.value);
   };
 
-  const checkPassword = (e) => {
-    e.preventDefault();
-    if (password === ADMIN_PASSWORD) setIsAuthenticated(true);
-    else alert("Погрешна шифра!");
+  const handleAdd = async (table, payload) => {
+    await supabase.from(table).insert([payload]);
+    fetchData();
+    setNewAnn(''); setNewBday({name:'', class_name:''}); setNewQuote({text:'', author:''});
   };
 
-  const addAnn = async () => {
-    if (!newAnn) return;
-    await supabase.from('announcements').insert([{ text: newAnn }]);
-    setNewAnn('');
+  const handleDelete = async (table, id) => {
+    await supabase.from(table).delete().eq('id', id);
     fetchData();
   };
 
-  const deleteAnn = async (id) => {
-    await supabase.from('announcements').delete().eq('id', id);
-    fetchData();
-  };
-
-  const toggleEmergency = async (val) => {
+  const setStatus = async (val) => {
     await supabase.from('system_settings').update({ value: val }).eq('key', 'emergency');
     setEmergency(val);
   };
 
   if (!isAuthenticated) {
     return (
-      <div className="h-screen w-screen bg-slate-900 flex items-center justify-center p-6">
-        <form onSubmit={checkPassword} className="bg-white p-12 rounded-[3rem] shadow-2xl w-full max-w-md text-center">
-            <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Lock className="text-blue-600" size={40} />
-            </div>
-            <h1 className="text-3xl font-[1000] mb-2 uppercase tracking-tight">Приступ Панелу</h1>
-            <p className="text-slate-400 font-bold mb-8 uppercase text-xs tracking-widest">Унесите администраторску лозинку</p>
-            <input 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl mb-4 text-center font-black text-2xl focus:border-blue-500 outline-none transition-all"
-                placeholder="••••••••"
-            />
-            <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-blue-700 shadow-xl shadow-blue-200">ПРИЈАВИ СЕ</button>
+      <div className="h-screen w-screen bg-slate-900 flex items-center justify-center">
+        <form onSubmit={(e) => {e.preventDefault(); if(password === ADMIN_PASSWORD) setIsAuthenticated(true); else alert("Грешка!");}} 
+              className="bg-white p-10 rounded-[3rem] shadow-2xl text-center w-[400px]">
+          <Lock className="mx-auto mb-6 text-blue-600" size={50} />
+          <h2 className="text-2xl font-black mb-6 uppercase tracking-tight">Админ Приступ</h2>
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} 
+                 className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl mb-4 text-center font-bold outline-none" placeholder="Унесите шифру..." />
+          <button className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">ПРИЈАВИ СЕ</button>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 p-8 font-sans text-slate-900">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-slate-50 p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-10">
-            <h1 className="text-4xl font-black uppercase tracking-tighter italic"><Unlock className="inline mr-2" /> Админ <span className="text-blue-600">Систем</span></h1>
-            <button onClick={() => setIsAuthenticated(false)} className="bg-slate-200 px-6 py-2 rounded-xl font-bold">Одјави се</button>
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter">Школски <span className="text-blue-600">Командни Центар</span></h1>
+            <div className="flex gap-4">
+                <button onClick={() => setStatus('УЗБУНА')} className={`px-8 py-3 rounded-xl font-black ${emergency === 'УЗБУНА' ? 'bg-red-600 text-white animate-pulse' : 'bg-red-100 text-red-600'}`}>УЗБУНА</button>
+                <button onClick={() => setStatus('НОРМАЛНО')} className="bg-slate-200 px-8 py-3 rounded-xl font-black">НОРМАЛНО</button>
+            </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-8 rounded-[3rem] shadow-xl">
-                <h2 className="text-2xl font-black mb-6 text-blue-600 uppercase italic flex items-center gap-3"><Bell /> Нова Објава</h2>
-                <textarea value={newAnn} onChange={(e) => setNewAnn(e.target.value)} className="w-full p-6 bg-slate-50 border-2 border-slate-200 rounded-3xl text-xl font-bold mb-4 h-40 outline-none focus:border-blue-600" placeholder="Упишите вест..." />
-                <button onClick={addAnn} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xl shadow-lg">ПОШАЉИ</button>
-                <div className="mt-8 space-y-3">
-                    {ann.map(item => (
-                        <div key={item.id} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 font-bold">
-                            <span className="truncate pr-4">{item.text}</span>
-                            <button onClick={() => deleteAnn(item.id)} className="text-red-400 hover:text-red-600"><Trash2 size={20}/></button>
-                        </div>
-                    ))}
-                </div>
-            </div>
+        <div className="flex gap-4 mb-8">
+            {['ann', 'bday', 'quote'].map(type => (
+                <button key={type} onClick={() => setActiveView(type)} className={`px-10 py-4 rounded-2xl font-black uppercase tracking-widest transition-all ${activeView === type ? 'bg-blue-600 text-white shadow-xl' : 'bg-white text-slate-400'}`}>
+                    {type === 'ann' ? 'Обавештења' : type === 'bday' ? 'Рођендани' : 'Цитати'}
+                </button>
+            ))}
+        </div>
 
-            <div className="space-y-8">
-                <div className={`p-8 rounded-[3rem] shadow-xl border-4 transition-all ${emergency === 'УЗБУНА' ? 'bg-red-50 border-red-600' : 'bg-white border-transparent'}`}>
-                    <h2 className="text-2xl font-black mb-6 text-red-600 uppercase italic flex items-center gap-3"><AlertCircle /> Узбуна</h2>
-                    <div className="flex gap-4">
-                        <button onClick={() => toggleEmergency('УЗБУНА')} className={`flex-1 py-6 rounded-3xl font-black text-2xl ${emergency === 'УЗБУНА' ? 'bg-red-600 text-white' : 'bg-slate-100 text-red-600'}`}>АКТИВИРАЈ</button>
-                        <button onClick={() => toggleEmergency('НОРМАЛНО')} className="flex-1 bg-slate-100 text-slate-400 py-6 rounded-3xl font-black text-2xl">УГАСИ</button>
-                    </div>
+        <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-white">
+            {activeView === 'ann' && (
+                <div>
+                    <textarea value={newAnn} onChange={e => setNewAnn(e.target.value)} className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-3xl mb-4 font-bold text-xl" placeholder="Ново обавештење..." />
+                    <button onClick={() => handleAdd('announcements', {text: newAnn})} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black">ОБЈАВИ</button>
+                    <div className="mt-8 space-y-3">{data.ann.map(a => <div key={a.id} className="flex justify-between p-4 bg-slate-50 rounded-xl font-bold italic">{a.text} <Trash2 className="text-red-400 cursor-pointer" onClick={() => handleDelete('announcements', a.id)}/></div>)}</div>
                 </div>
-            </div>
+            )}
+            {activeView === 'bday' && (
+                <div>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <input value={newBday.name} onChange={e => setNewBday({...newBday, name: e.target.value})} className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" placeholder="Име и презиме" />
+                        <input value={newBday.class_name} onChange={e => setNewBday({...newBday, class_name: e.target.value})} className="p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" placeholder="Одељење" />
+                    </div>
+                    <button onClick={() => handleAdd('birthdays', newBday)} className="w-full bg-pink-500 text-white py-4 rounded-2xl font-black">ДОДАЈ СЛАВЉЕНИКА</button>
+                    <div className="mt-8 grid grid-cols-2 gap-3">{data.bdays.map(b => <div key={b.id} className="flex justify-between p-4 bg-slate-50 rounded-xl font-bold">{b.name} ({b.class_name}) <Trash2 className="text-red-400 cursor-pointer" onClick={() => handleDelete('birthdays', b.id)}/></div>)}</div>
+                </div>
+            )}
+            {activeView === 'quote' && (
+                <div>
+                    <input value={newQuote.text} onChange={e => setNewQuote({...newQuote, text: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl mb-4 font-bold" placeholder="Текст цитата..." />
+                    <input value={newQuote.author} onChange={e => setNewQuote({...newQuote, author: e.target.value})} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl mb-4 font-bold" placeholder="Аутор..." />
+                    <button onClick={() => handleAdd('quotes', newQuote)} className="w-full bg-slate-800 text-white py-4 rounded-2xl font-black">ДОДАЈ ЦИТАТ</button>
+                    <div className="mt-8 space-y-3">{data.quotes.map(q => <div key={q.id} className="flex justify-between p-4 bg-slate-50 rounded-xl font-bold italic">"{q.text}" — {q.author} <Trash2 className="text-red-400 cursor-pointer" onClick={() => handleDelete('quotes', q.id)}/></div>)}</div>
+                </div>
+            )}
         </div>
       </div>
     </div>
