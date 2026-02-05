@@ -17,6 +17,7 @@ const MORNING_SCHEDULE = [
   { num: 0, label: "ОДМОР", start: "11:35", end: "11:40" },
   { num: 5, label: "5. ЧАС", start: "11:40", end: "12:25" },
   { num: 6, label: "6. ЧАС", start: "12:30", end: "13:15" },
+  { num: 7, label: "7. ЧАС", start: "13:15", end: "14:00" },
 ];
 
 const AFTERNOON_SCHEDULE = [
@@ -30,6 +31,7 @@ const AFTERNOON_SCHEDULE = [
   { num: 0, label: "ОДМОР", start: "17:35", end: "17:40" },
   { num: 5, label: "5. ЧАС", start: "17:40", end: "18:25" },
   { num: 6, label: "6. ЧАС", start: "18:30", end: "19:15" },
+  { num: 7, label: "7. ЧАС", start: "19:15", end: "20:00" },
 ];
 
 export default function SchoolTV() {
@@ -126,7 +128,7 @@ export default function SchoolTV() {
         <div className="flex items-center gap-10">
           <div className="flex items-center gap-4 bg-orange-50 p-4 px-6 rounded-3xl border border-orange-100">
              <Thermometer className="text-orange-500" size={32} />
-             <span className="text-4xl font-black text-slate-700">{weather.temp}°Ц</span>
+             <span className="text-4xl font-black text-slate-700">{weather.temp}°C</span>
           </div>
           <div className="text-right border-l-4 border-slate-100 pl-10">
             <p className="text-2xl font-black text-slate-300 uppercase leading-none mb-1">
@@ -211,7 +213,7 @@ export default function SchoolTV() {
                   <div className="animate-in fade-in duration-700 h-full flex flex-col items-center justify-center text-center p-6">
                     <CloudSun size={120} className="text-blue-400 mb-6" />
                     <h3 className="text-4xl font-black text-slate-800 uppercase mb-4">Време Данас</h3>
-                    <span className="text-[9rem] font-[1000] text-blue-600 leading-none">{weather.temp}°Ц</span>
+                    <span className="text-[9rem] font-[1000] text-blue-600 leading-none">{weather.temp}°C</span>
                     <p className="text-2xl font-black text-slate-400 mt-6 tracking-widest uppercase italic italic">Београд</p>
                   </div>
                 )}
