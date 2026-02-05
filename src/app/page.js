@@ -2,8 +2,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Clock, Bell, Info, Calendar, LayoutDashboard, Send, Trash2 } from 'lucide-react';
 
+
 // --- PODACI (Ovo bi idealno išlo u bazu, ali za početak držimo ovde) ---
-const SCHOOL_NAME = "GIMNAZIJA ŠKOLA";
+const SCHOOL_NAME = "OŠ \"Karađorđe\""; // Naziv škole
 const ADMIN_PIN = "2024"; // Šifra za dodavanje obaveštenja
 
 const bellSchedule = [
