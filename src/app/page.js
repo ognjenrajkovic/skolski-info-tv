@@ -191,7 +191,7 @@ export default function SchoolTV() {
             {/* 1. RASPORED KABINETA ZA OVAJ ČAS */}
             {activeTab === 1 && (
               <div className="animate-in slide-in-from-right duration-500 h-full">
-                <h3 className="text-[3vh] font-black text-blue-600 mb-6 uppercase flex items-center gap-3"><BookOpen /> Кабинети</h3>
+                <h3 className="text-[3vh] font-black text-blue-600 mb-6 uppercase flex items-center gap-3"><BookOpen /> Распоред часова</h3>
                 <p className="text-slate-400 mb-6 font-bold uppercase italic text-sm">Сада: {status.activeSlot.label}</p>
                 <div className="grid grid-cols-1 gap-3">
                   {status.currentRooms.length > 0 ? status.currentRooms.slice(0, 6).map((r, i) => (
@@ -222,11 +222,30 @@ export default function SchoolTV() {
 
             {/* 3. CITATI */}
             {activeTab === 3 && (
-              <div className="animate-in zoom-in duration-500 h-full flex flex-col items-center justify-center text-center p-6">
+              <div className="animate-in zoom-in duration-500 h-full flex flex-col items-center justify-center text-center p-8">
                 <Quote size={80} className="text-blue-100 mb-8" />
-                <p className="text-[3.5vh] font-black italic text-slate-800 leading-tight italic">
-                  {announcements.length > 0 ? `"${announcements[0]?.text}"` : '"Знање је моћ."'}
-                </p>
+                
+                {quotes && quotes.length > 0 ? (
+                  <div className="space-y-6">
+                    <p className="text-[3.8vh] font-black italic text-slate-800 leading-tight">
+                      "{quotes[0]?.text}"
+                    </p>
+                    {quotes[0]?.author && (
+                      <p className="text-[2.2vh] font-bold text-blue-500 uppercase tracking-[0.2em]">
+                        — {quotes[0]?.author}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <p className="text-[3.8vh] font-black italic text-slate-800 leading-tight">
+                      "Знање је моћ."
+                    </p>
+                    <p className="text-[2.2vh] font-bold text-blue-500 uppercase tracking-[0.2em]">
+                      — Френсис Бејкон
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
