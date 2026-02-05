@@ -43,22 +43,28 @@ export default function SchoolTV() {
   const [morningShift, setMorningShift] = useState('Parna');
   const [activeTab, setActiveTab] = useState(0);
 
-  const fetchData = async () => {
+const fetchData = async () => {
+  try {
     const { data: ann } = await supabase.from('announcements').select('*');
     const { data: bdays } = await supabase.from('birthdays').select('*');
     const { data: tt } = await supabase.from('timetable').select('*');
     const { data: sys } = await supabase.from('system_settings').select('*');
     
-    if (ann) setAnnouncements(ann);
-    if (bdays) setBirthdays(bdays);
-    if (tt) setTimetable(tt);
-    if (sys) {
+    // Safety check: postavljamo prazne nizove ako su podaci null
+    setAnnouncements(ann || []);
+    setBirthdays(bdays || []);
+    setTimetable(tt || []);
+    
+    if (sys && sys.length > 0) {
       const em = sys.find(s => s.key === 'emergency');
       const sh = sys.find(s => s.key === 'current_morning_shift');
       if (em) setEmergency(em.value);
-      if (sh) setMorningShift(sh.value);
+      if (sh) setMorningShift(sh.value || 'Parna');
     }
-  };
+  } catch (err) {
+    console.error("Podaci još nisu spremni u bazi:", err);
+  }
+};
 
   useEffect(() => {
     fetchData();
