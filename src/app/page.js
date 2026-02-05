@@ -1,234 +1,241 @@
 'use client'
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, Bell, Sun, Moon, MapPin, CloudSun, Thermometer, Calendar, ChevronRight } from 'lucide-react';
+import { Clock, Bell, Sun, Moon, MapPin, CloudSun, Thermometer, Calendar, Quote, Cake, AlertTriangle, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 const SCHOOL_NAME = "ОШ „КАРАЂОРЂЕ”";
 
-// --- РАСПОРЕДИ (Morning & Afternoon) ---
+// --- SATNICE ---
 const morningSchedule = [
-  { num: 1, label: "1. ЧАС", start: "08:00", end: "08:45" },
-  { num: 0, label: "ОДМОР", start: "08:45", end: "08:50" },
-  { num: 2, label: "2. ЧАС", start: "08:50", end: "09:35" },
-  { num: 0, label: "В. ОДМОР", start: "09:35", end: "10:00" },
-  { num: 3, label: "3. ЧАС", start: "10:00", end: "10:45" },
-  { num: 0, label: "ОДМОР", start: "10:45", end: "10:50" },
-  { num: 4, label: "4. ЧАС", start: "10:50", end: "11:35" },
-  { num: 0, label: "ОДМОР", start: "11:35", end: "11:40" },
-  { num: 5, label: "5. ЧАС", start: "11:40", end: "12:25" },
+  { num: 1, label: "1. ČAS", start: "08:00", end: "08:45" },
+  { num: 0, label: "ODMOR", start: "08:45", end: "08:50" },
+  { num: 2, label: "2. ČAS", start: "08:50", end: "09:35" },
+  { num: 0, label: "V. ODMOR", start: "09:35", end: "10:00" },
+  { num: 3, label: "3. ČAS", start: "10:00", end: "10:45" },
+  { num: 0, label: "ODMOR", start: "10:45", end: "10:50" },
+  { num: 4, label: "4. ČAS", start: "10:50", end: "11:35" },
+  { num: 0, label: "ODMOR", start: "11:35", end: "11:40" },
+  { num: 5, label: "5. ČAS", start: "11:40", end: "12:25" },
 ];
-
-const afternoonSchedule = [
-  { num: 1, label: "1. ЧАС", start: "14:00", end: "14:45" },
-  { num: 0, label: "ОДМОР", start: "14:45", end: "14:50" },
-  { num: 2, label: "2. ЧАС", start: "14:50", end: "15:35" },
-  { num: 0, label: "В. ОДМОР", start: "15:35", end: "16:00" },
-  { num: 3, label: "3. ЧАС", start: "16:00", end: "16:45" },
-  { num: 0, label: "ОДМОР", start: "16:45", end: "16:50" },
-  { num: 4, label: "4. ЧАС", start: "16:50", end: "17:35" },
-  { num: 0, label: "ОДМОР", start: "17:35", end: "17:40" },
-  { num: 5, label: "5. ЧАС", start: "17:40", end: "18:25" },
-];
-
-const classLocations = {
-  1: { "5-1": "Мат (2)", "6-2": "Српски (8)", "8-3": "Физ (12)" },
-  2: { "5-1": "Српски (8)", "7-1": "Биол (5)", "8-2": "Ист (3)" },
-  3: { "5-2": "Гео (4)", "6-1": "Лик (1)", "7-3": "Хем (10)" },
-  4: { "1-1": "Српски (2)", "7-1": "Мат (8)", "5-3": "Тех (кб)" },
-  5: { "6-1": "Физ", "8-1": "Енг (7)", "7-2": "Инф (лаб)" },
-};
 
 export default function SchoolTV() {
   const [now, setNow] = useState(new Date());
   const [announcements, setAnnouncements] = useState([]);
+  const [birthdays, setBirthdays] = useState([]);
+  const [quote, setQuote] = useState({ text: "Znanje je moć.", author: "Narodna poslovica" });
+  const [emergency, setEmergency] = useState(null); // Za "UZBUNA" mod
   const [weather, setWeather] = useState({ temp: '--' });
-  const [activeTab, setActiveTab] = useState(0); 
+  const [activeTab, setActiveTab] = useState(0);
 
+  // 1. TAJMERE I ROTACIJA
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
-    const reload = setInterval(() => window.location.reload(), 60000);
-    const rotation = setInterval(() => setActiveTab((prev) => (prev + 1) % 3), 15000); 
+    const reload = setInterval(() => window.location.reload(), 600000); // Reload na 10 min radi stabilnosti
+    const rotation = setInterval(() => setActiveTab((prev) => (prev + 1) % 4), 12000); 
     return () => { clearInterval(timer); clearInterval(reload); clearInterval(rotation); }
   }, []);
 
+  // 2. PODACI IZ SUPABASE-A
   useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=44.81&longitude=20.46&current_weather=true')
-      .then(res => res.json())
-      .then(data => setWeather({ temp: Math.round(data.current_weather.temperature) }))
-      .catch(() => {});
-  }, []);
+    const fetchData = async () => {
+      // Obavještenja
+      const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+      if (ann) setAnnouncements(ann.map(a => a.text));
 
-  useEffect(() => {
-    const fetchNotes = async () => {
-      const { data } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
-      if (data) setAnnouncements(data.map(a => a.text));
+      // Rođendani (danas)
+      const { data: bdays } = await supabase.from('birthdays').select('*');
+      if (bdays) setBirthdays(bdays);
+
+      // Misao dana
+      const { data: q } = await supabase.from('quotes').select('*').limit(1);
+      if (q && q[0]) setQuote(q[0]);
+
+      // Emergency Mode
+      const { data: em } = await supabase.from('system_settings').select('*').eq('key', 'emergency').single();
+      if (em) setEmergency(em.value);
     };
-    fetchNotes();
+    fetchData();
+    // Realtime osluškivanje za hitne slučajeve
+    const sub = supabase.channel('system').on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, fetchData).subscribe();
+    return () => supabase.removeChannel(sub);
   }, []);
 
+  // 3. LOGIKA ZA PROGRESS BAR ČASA
   const status = useMemo(() => {
     const hour = now.getHours();
-    const currentMin = hour * 60 + now.getMinutes();
+    const min = now.getMinutes();
+    const totalSec = min * 60 + now.getSeconds();
+    const currentMin = hour * 60 + min;
     const isAfternoon = hour >= 13;
-    const currentSchedule = isAfternoon ? afternoonSchedule : morningSchedule; 
-    let activeSlot = currentSchedule.find(s => {
+    const sched = morningSchedule; // Ovdje možeš dodati i popodnevnu
+    
+    let activeSlot = sched.find(s => {
       const [sh, sm] = s.start.split(':').map(Number);
       const [eh, em] = s.end.split(':').map(Number);
       return currentMin >= (sh * 60 + sm) && currentMin < (eh * 60 + em);
     });
-    let displayClassNum = activeSlot?.num || 1;
-    if (activeSlot?.num === 0) {
-        const next = currentSchedule.find(s => s.num > 0 && (Number(s.start.split(':')[0]) * 60 + Number(s.start.split(':')[1])) > currentMin);
-        if (next) displayClassNum = next.num;
+
+    // Izračun procenta završenog časa
+    let progress = 0;
+    if (activeSlot) {
+      const [sh, sm] = activeSlot.start.split(':').map(Number);
+      const [eh, em] = activeSlot.end.split(':').map(Number);
+      const startSec = sh * 3600 + sm * 60;
+      const endSec = eh * 3600 + em * 60;
+      const nowSec = hour * 3600 + totalSec;
+      progress = ((nowSec - startSec) / (endSec - startSec)) * 100;
     }
-    return { active: activeSlot || { label: "ВАН НАСТАВЕ", num: -1 }, isAfternoon, displayClassNum, currentSchedule };
+
+    return { active: activeSlot || { label: "VAN NASTAVE", num: -1 }, progress, isAfternoon };
   }, [now]);
 
+  // AKO JE UZBUNA AKTIVNA - PRIKAŽI SAMO TO
+  if (emergency === "UZBUNA") {
+    return (
+      <div className="h-screen w-screen bg-red-600 flex flex-col items-center justify-center text-white p-10 animate-pulse">
+        <AlertTriangle size={300} strokeWidth={3} />
+        <h1 className="text-[15rem] font-black tracking-tighter uppercase mt-10">UZBUNA</h1>
+        <p className="text-6xl font-bold uppercase tracking-widest text-red-100">Pratite uputstva dežurnog osoblja!</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-screen w-screen bg-[#F0F2F5] text-slate-900 p-8 overflow-hidden flex flex-col font-sans tracking-tight">
+    <div className="h-screen w-screen bg-[#F8FAFC] text-slate-900 p-8 flex flex-col font-sans selection:bg-blue-100">
       
-      {/* HEADER: Кристално чист са белим панелом */}
-      <div className="flex justify-between items-center mb-8 bg-white p-8 rounded-[2.5rem] shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-white">
+      {/* 1. TOP ALERT BAR (Ako postoji važno obaveštenje) */}
+      {announcements[0]?.includes("VAŽNO") && (
+        <div className="mb-6 bg-orange-500 text-white p-4 rounded-3xl flex items-center justify-center gap-4 animate-bounce shadow-lg shadow-orange-200">
+          <Zap size={32} fill="currentColor" />
+          <span className="text-3xl font-black uppercase tracking-tighter text-center">{announcements[0]}</span>
+        </div>
+      )}
+
+      {/* 2. HEADER */}
+      <div className="flex justify-between items-center mb-8 bg-white p-8 rounded-[3rem] shadow-[0_15px_50px_rgba(0,0,0,0.04)] border border-white">
         <div className="flex items-center gap-8">
-            <div className="bg-blue-600 p-5 rounded-[2rem] text-white shadow-xl shadow-blue-100">
-                {status.isAfternoon ? <Moon size={40} /> : <Sun size={40} />}
-            </div>
-            <div>
-                <h1 className="text-5xl font-[900] text-slate-800 uppercase tracking-tighter leading-none">{SCHOOL_NAME}</h1>
-                <div className="flex items-center gap-3 mt-2">
-                  <span className={`px-4 py-1 rounded-full text-sm font-black uppercase ${status.isAfternoon ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
-                    {status.isAfternoon ? "Поподне" : "Преподне"}
-                  </span>
-                  <div className="h-2 w-2 rounded-full bg-slate-300" />
-                  <p className="text-xl font-bold text-slate-400 uppercase tracking-widest leading-none">Смена</p>
-                </div>
-            </div>
+          <div className="bg-blue-600 p-6 rounded-[2.5rem] text-white shadow-2xl shadow-blue-200">
+            <Clock size={48} strokeWidth={2.5} />
+          </div>
+          <div>
+            <h1 className="text-6xl font-[1000] text-slate-800 tracking-tighter uppercase leading-none italic">{SCHOOL_NAME}</h1>
+            <p className="text-xl font-black text-blue-500 mt-2 uppercase tracking-widest opacity-80 flex items-center gap-2">
+              <Sun size={20} /> Digitalni Info Panel
+            </p>
+          </div>
         </div>
         
-        <div className="flex items-center gap-12">
-          <div className="text-right border-r-4 border-slate-50 pr-12">
-            <div className="flex items-center justify-end gap-3 text-2xl font-black text-slate-400 uppercase mb-2">
-              <Calendar size={28} className="text-blue-500" />
+        <div className="flex items-center gap-12 bg-slate-50 p-4 px-8 rounded-[2.5rem] border border-slate-100">
+          <div className="text-right">
+            <p className="text-2xl font-black text-slate-400 uppercase tracking-tighter mb-1 leading-none">
               {now.toLocaleDateString('sr-RS', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </div>
-            <div className="text-[6.5rem] font-[1000] tabular-nums text-slate-800 leading-none tracking-tighter">
+            </p>
+            <div className="text-8xl font-[1000] tabular-nums text-slate-800 leading-none">
               {now.getHours().toString().padStart(2, '0')}:{now.getMinutes().toString().padStart(2, '0')}
-              <span className="text-4xl text-blue-600 ml-2 font-black opacity-80">:{now.getSeconds().toString().padStart(2, '0')}</span>
+              <span className="text-4xl text-blue-500 font-black opacity-50 ml-1">:{now.getSeconds().toString().padStart(2, '0')}</span>
             </div>
-          </div>
-          <div className="flex flex-col items-center justify-center bg-white border-2 border-orange-50 p-5 rounded-[2rem] min-w-[140px]">
-             <Thermometer className="text-orange-500 mb-1" size={32} />
-             <span className="text-5xl font-[1000] text-slate-800">{weather.temp}°C</span>
           </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT AREA */}
-      <div className="flex flex-1 gap-8 min-h-0">
+      {/* 3. MAIN GRID */}
+      <div className="grid grid-cols-12 gap-8 flex-1 min-h-0">
         
-        {/* LEVA STRANA (72%) */}
-        <div className="w-[72%] flex flex-col gap-8">
-          
-          {/* ТРЕНУТНИ ЧАС: Највећи фокус */}
-          <div className="flex-1 bg-white rounded-[4rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-white p-16 flex flex-col justify-center relative overflow-hidden group">
-             <div className="relative z-10">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className={`h-4 w-4 rounded-full animate-ping ${status.active.num > 0 ? 'bg-blue-600' : 'bg-emerald-500'}`} />
-                  <span className="text-3xl font-black uppercase tracking-[0.2em] text-slate-300">Тренутно:</span>
-                </div>
-                <h2 className={`text-[15rem] font-[1000] leading-[0.75] tracking-tighter uppercase italic ${status.active.num > 0 ? 'text-blue-700' : 'text-emerald-600'}`}>
+        {/* LIJEVO: STATUS ČASA (7 Kolona) */}
+        <div className="col-span-7 flex flex-col gap-8">
+          <div className="flex-1 bg-white rounded-[4rem] shadow-sm border border-slate-100 p-16 flex flex-col items-center justify-center relative overflow-hidden group">
+             
+             {/* KRUŽNI PROGRESS BAR */}
+             <div className="relative h-[500px] w-[500px] flex items-center justify-center">
+                <svg className="absolute inset-0 h-full w-full rotate-[-90deg]">
+                  <circle cx="250" cy="250" r="230" stroke="currentColor" strokeWidth="30" fill="transparent" className="text-slate-50" />
+                  <circle cx="250" cy="250" r="230" stroke="currentColor" strokeWidth="30" fill="transparent" 
+                          strokeDasharray={1445} strokeDashoffset={1445 - (1445 * status.progress) / 100}
+                          className={`transition-all duration-1000 ${status.active.num > 0 ? 'text-blue-600' : 'text-emerald-500'}`} strokeLinecap="round" />
+                </svg>
+                <div className="text-center z-10">
+                  <span className="text-4xl font-black text-slate-300 uppercase tracking-widest block mb-4">Trenutno:</span>
+                  <h2 className={`text-[11rem] font-[1000] leading-none tracking-tighter italic ${status.active.num > 0 ? 'text-slate-800' : 'text-emerald-600'}`}>
                     {status.active.label}
-                </h2>
+                  </h2>
+                  {status.active.num > 0 && <span className="text-5xl font-black text-blue-500 mt-6 block">{Math.round(status.progress)}%</span>}
+                </div>
              </div>
-             <Clock size={400} className="absolute -right-32 -bottom-32 text-slate-50 opacity-60" />
-          </div>
-
-          {/* ДОЊА САТНИЦА: Хоризонтални преглед */}
-          <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-white flex justify-between items-center px-12">
-              {status.currentSchedule.filter(s => s.num > 0).map((slot, i) => (
-                  <React.Fragment key={i}>
-                    <div className={`flex flex-col items-center px-6 py-3 rounded-[1.5rem] transition-all duration-500 ${status.active.label === slot.label ? 'bg-blue-600 text-white shadow-2xl scale-125 z-20' : 'opacity-20 scale-90'}`}>
-                        <span className="text-2xl font-[1000] tracking-tighter">{slot.label}</span>
-                        <span className="text-base font-bold opacity-80">{slot.start}</span>
-                    </div>
-                    {i < 4 && <ChevronRight className="text-slate-100" size={32} />}
-                  </React.Fragment>
-              ))}
+             
+             <div className="absolute top-10 left-10 opacity-5 font-black text-[15rem] leading-none select-none italic text-blue-900">{status.active.num > 0 ? status.active.num : ''}</div>
           </div>
         </div>
 
-        {/* DESNA STRANA (28%) - РОТИРАЈУЋИ ИНФО */}
-        <div className="w-[28%] flex flex-col">
-          <div className="flex-1 bg-white rounded-[4rem] shadow-2xl border border-white overflow-hidden flex flex-col relative">
+        {/* DESNO: ROTIRAJUĆE INFORMACIJE (5 Kolona) */}
+        <div className="col-span-5 flex flex-col gap-8">
+          
+          <div className="flex-1 bg-white rounded-[4rem] shadow-2xl border-4 border-white overflow-hidden flex flex-col relative">
              
-             {/* HEADER ДЕСНОГ ПАНЕЛА */}
-             <div className="h-3 w-full bg-slate-50 flex">
-                <div className={`h-full transition-all duration-1000 ${activeTab === 0 ? 'w-full bg-orange-500' : activeTab === 1 ? 'w-full bg-emerald-500' : 'w-full bg-blue-500'}`} 
-                     style={{ width: '100%', animation: 'progress 15s linear infinite' }} />
-             </div>
-
-             {/* САДРЖАЈ ТАБОВА */}
-             <div className="p-10 flex-grow">
+             <div className="p-12 flex-grow">
                {activeTab === 0 && (
-                   <div className="animate-in fade-in zoom-in duration-700">
-                      <div className="flex items-center gap-4 mb-10">
-                        <div className="p-3 bg-orange-100 rounded-2xl text-orange-600"><Bell size={36} fill="currentColor" /></div>
-                        <h3 className="text-4xl font-[1000] text-slate-800 uppercase tracking-tighter italic">Вести</h3>
-                      </div>
-                      <div className="space-y-5">
-                          {announcements.slice(0, 3).map((msg, i) => (
-                              <div key={i} className="bg-orange-50/50 p-7 rounded-[2.5rem] border-l-[12px] border-orange-500 text-2xl font-black text-slate-700 shadow-sm leading-tight">
-                                  {msg}
-                              </div>
-                          ))}
-                          {announcements.length === 0 && <p className="text-2xl text-slate-300 font-bold italic text-center mt-20 uppercase tracking-widest">Нема вести</p>}
-                      </div>
-                   </div>
+                 <div className="animate-in fade-in zoom-in duration-700">
+                    <h3 className="text-5xl font-[1000] text-orange-500 flex items-center gap-5 uppercase italic mb-10 tracking-tighter">
+                      <Bell size={60} fill="currentColor" /> Obavještenja
+                    </h3>
+                    <div className="space-y-6">
+                        {announcements.slice(0, 3).map((msg, i) => (
+                            <div key={i} className="bg-orange-50 p-8 rounded-[2.5rem] border-l-[15px] border-orange-500 text-3xl font-black text-slate-700 leading-tight">
+                              {msg}
+                            </div>
+                        ))}
+                    </div>
+                 </div>
                )}
 
                {activeTab === 1 && (
-                   <div className="animate-in fade-in zoom-in duration-700">
-                      <div className="flex items-center gap-4 mb-10">
-                        <div className="p-3 bg-emerald-100 rounded-2xl text-emerald-600"><MapPin size={36} /></div>
-                        <h3 className="text-4xl font-[1000] text-slate-800 uppercase tracking-tighter italic">Кабинети</h3>
-                      </div>
-                      <div className="space-y-3">
-                          <p className="text-xl font-bold text-slate-400 mb-4 uppercase tracking-widest">{status.displayClassNum}. час:</p>
-                          {Object.entries(classLocations[status.displayClassNum] || {}).map(([ode, pre], i) => (
-                              <div key={i} className="flex justify-between items-center bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-sm">
-                                  <span className="text-3xl font-[1000] text-slate-800 leading-none">{ode}</span>
-                                  <span className="text-xl font-bold text-emerald-600 italic leading-none">{pre}</span>
-                              </div>
-                          ))}
-                      </div>
-                   </div>
+                 <div className="animate-in fade-in zoom-in duration-700 h-full flex flex-col">
+                    <h3 className="text-5xl font-[1000] text-pink-500 flex items-center gap-5 uppercase italic mb-10 tracking-tighter">
+                      <Cake size={60} fill="currentColor" /> Rođendani
+                    </h3>
+                    <div className="grid grid-cols-1 gap-6 mt-10">
+                        {birthdays.length > 0 ? birthdays.map((b, i) => (
+                          <div key={i} className="flex justify-between items-center bg-pink-50 p-8 rounded-[2.5rem] border-2 border-pink-100">
+                             <span className="text-5xl font-black text-pink-700 italic">{b.name}</span>
+                             <span className="text-3xl font-bold bg-white px-6 py-2 rounded-full text-pink-500">{b.class}</span>
+                          </div>
+                        )) : (
+                          <p className="text-3xl text-slate-300 font-bold italic text-center mt-20 uppercase tracking-widest">Danas nema rođendana</p>
+                        )}
+                    </div>
+                 </div>
                )}
 
                {activeTab === 2 && (
-                   <div className="animate-in fade-in zoom-in duration-700 h-full flex flex-col items-center justify-center text-center">
-                      <div className="bg-blue-50 p-12 rounded-[3rem] mb-8 border-2 border-blue-100 shadow-inner">
-                          <CloudSun size={120} className="text-blue-500" />
-                      </div>
-                      <h3 className="text-4xl font-[1000] uppercase text-slate-800 tracking-tighter mb-2">Прогноза</h3>
-                      <span className="text-[8.5rem] font-[1000] text-blue-600 leading-none tracking-tighter">{weather.temp}°C</span>
-                      <p className="text-2xl font-black text-slate-400 mt-6 tracking-[0.3em] uppercase">Београд</p>
-                   </div>
+                 <div className="animate-in fade-in zoom-in duration-700 h-full flex flex-col justify-center items-center text-center p-10">
+                    <Quote size={120} className="text-blue-200 mb-8" />
+                    <h4 className="text-5xl font-[1000] text-slate-800 leading-[1.1] italic mb-8 tracking-tight">"{quote.text}"</h4>
+                    <p className="text-3xl font-black text-blue-500 uppercase tracking-widest">— {quote.author}</p>
+                 </div>
+               )}
+
+               {activeTab === 3 && (
+                 <div className="animate-in fade-in zoom-in duration-700 h-full flex flex-col">
+                    <h3 className="text-5xl font-[1000] text-emerald-500 flex items-center gap-5 uppercase italic mb-10 tracking-tighter">
+                      <MapPin size={60} fill="currentColor" /> Kabineti
+                    </h3>
+                    <div className="grid grid-cols-1 gap-4 overflow-hidden">
+                        {/* Ovdje renderuj kabinete */}
+                        <div className="p-8 bg-slate-50 rounded-[2.5rem] text-4xl font-black text-center text-slate-400 italic border-2 border-dashed border-slate-200">Podaci se učitavaju...</div>
+                    </div>
+                 </div>
                )}
              </div>
 
-             <div className="p-10 border-t border-slate-50 opacity-40">
-                <p className="text-sm font-black text-slate-400 text-center uppercase tracking-[0.5em]">ОШ Карађорђе • Инфо Систем</p>
+             {/* PROGRESS TIMER BAR NA DNU */}
+             <div className="h-4 w-full bg-slate-100 flex items-center">
+                <div className="h-full bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)] transition-all duration-1000 animate-[progress_12s_linear_infinite]" />
              </div>
           </div>
         </div>
-
       </div>
 
-      <style jsx>{` 
-        @keyframes progress { 
-          from { transform: translateX(-100%); } 
-          to { transform: translateX(0%); } 
-        } 
+      <style jsx>{`
+        @keyframes progress { from { width: 0%; } to { width: 100%; } }
       `}</style>
     </div>
   );

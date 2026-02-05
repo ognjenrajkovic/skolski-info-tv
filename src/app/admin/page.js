@@ -1,84 +1,100 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
-import { Send, Trash2, ShieldCheck, ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Bell, Cake, Quote, AlertOctagon, Trash2, Send, ShieldAlert, RefreshCw } from 'lucide-react';
 
-export default function AdminPage() {
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [pin, setPin] = useState('')
-  const [newNote, setNewNote] = useState('')
-  const [list, setList] = useState([])
+export default function AdminPanel() {
+  const [announcements, setAnnouncements] = useState([]);
+  const [text, setText] = useState('');
+  const [emergency, setEmergency] = useState('NORMAL');
 
-  const fetchNotes = async () => {
-    const { data } = await supabase.from('announcements').select('*').order('created_at', { ascending: false })
-    setList(data || [])
-  }
+  // Učitavanje trenutnih podataka
+  useEffect(() => {
+    fetchData();
+    const sub = supabase.channel('admin_realtime').on('postgres_changes', { event: '*', schema: 'public', table: '*' }, fetchData).subscribe();
+    return () => supabase.removeChannel(sub);
+  }, []);
 
-  useEffect(() => { if(isAdmin) fetchNotes() }, [isAdmin])
+  const fetchData = async () => {
+    const { data: ann } = await supabase.from('announcements').select('*').order('created_at', { ascending: false });
+    const { data: sys } = await supabase.from('system_settings').select('*').eq('key', 'emergency').single();
+    if (ann) setAnnouncements(ann);
+    if (sys) setEmergency(sys.value);
+  };
+
+  const toggleEmergency = async (mode) => {
+    await supabase.from('system_settings').update({ value: mode }).eq('key', 'emergency');
+  };
 
   const addNote = async () => {
-    if(!newNote) return
-    await supabase.from('announcements').insert([{ text: newNote }])
-    setNewNote('')
-    fetchNotes()
-  }
+    if (!text) return;
+    await supabase.from('announcements').insert([{ text }]);
+    setText('');
+  };
 
   const deleteNote = async (id) => {
-    await supabase.from('announcements').delete().eq('id', id)
-    fetchNotes()
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white font-sans">
-        <div className="bg-slate-800 p-10 rounded-3xl shadow-2xl w-full max-w-md border border-slate-700">
-          <ShieldCheck size={60} className="mx-auto mb-6 text-blue-400" />
-          <h1 className="text-3xl font-black text-center mb-8 uppercase tracking-tighter">Админ приступ</h1>
-          <input 
-            type="password" 
-            placeholder="Унесите ПИН" 
-            className="w-full p-4 rounded-xl bg-slate-700 border-none text-white text-2xl text-center mb-4 focus:ring-4 ring-blue-500 transition-all"
-            onChange={(e) => e.target.value === '2024' && setIsAdmin(true)}
-          />
-        </div>
-      </div>
-    )
-  }
+    await supabase.from('announcements').delete().eq('id', id);
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 lg:p-12 font-sans">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-10">
-          <h1 className="text-4xl font-black text-slate-800 uppercase tracking-tighter">Управљање објавама</h1>
-          <Link href="/" className="flex items-center gap-2 text-blue-600 font-bold hover:underline"><ArrowLeft size={20}/> Назад на ТВ</Link>
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans">
+      <div className="max-w-5xl mx-auto">
+        
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
+          <div>
+            <h1 className="text-3xl font-[1000] text-slate-900 tracking-tighter uppercase">Admin <span className="text-blue-600">Panel</span></h1>
+            <p className="text-slate-400 font-bold uppercase text-xs tracking-[0.2em]">OŠ Karađorđe • Upravljanje sistemom</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => toggleEmergency('UZBUNA')} className={`px-6 py-3 rounded-2xl font-black transition-all ${emergency === 'UZBUNA' ? 'bg-red-600 text-white animate-pulse shadow-lg shadow-red-200' : 'bg-white text-red-600 border-2 border-red-100'}`}>
+              UZBUNA
+            </button>
+            <button onClick={() => toggleEmergency('NORMAL')} className={`px-6 py-3 rounded-2xl font-black transition-all ${emergency === 'NORMAL' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-white text-emerald-500 border-2 border-emerald-100'}`}>
+              NORMAL
+            </button>
+          </div>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl shadow-xl mb-10 border border-slate-100">
-          <textarea 
-            className="w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-2xl text-xl mb-4 focus:border-blue-500 outline-none transition-all"
-            placeholder="Унесите ново обавештење..."
-            rows="3"
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-          />
-          <button onClick={addNote} className="w-full bg-blue-600 text-white p-5 rounded-2xl font-black text-2xl flex items-center justify-center gap-3 hover:bg-blue-700 active:scale-[0.98] transition-all">
-            <Send /> ОБЈАВИ НА ТВ
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-slate-500 uppercase tracking-widest">Тренутне објаве</h2>
-          {list.map((item) => (
-            <div key={item.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center animate-in slide-in-from-top">
-              <p className="text-xl font-medium text-slate-700">{item.text}</p>
-              <button onClick={() => deleteNote(item.id)} className="text-red-500 p-3 hover:bg-red-50 rounded-xl transition-colors">
-                <Trash2 size={24} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* LEVO: FORMA ZA DODAVANJE */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-600 uppercase italic"><Send size={20}/> Nova Objava</h2>
+              <textarea 
+                value={text} onChange={(e) => setText(e.target.value)}
+                placeholder="Unesite tekst obaveštenja..."
+                className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl font-bold focus:border-blue-500 outline-none transition-all h-40 mb-4"
+              />
+              <button onClick={addNote} className="w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95">
+                OBJAVI NA TV
               </button>
             </div>
-          ))}
+          </div>
+
+          {/* DESNO: LISTA AKTIVNIH OBAVEŠTENJA */}
+          <div className="lg:col-span-2">
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[500px]">
+              <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-slate-400 uppercase italic"><Bell size={20}/> Aktivne objave na ekranu</h2>
+              <div className="space-y-4">
+                {announcements.map((note) => (
+                  <div key={note.id} className="group flex justify-between items-center bg-slate-50 p-6 rounded-[2rem] border border-slate-100 hover:border-blue-200 transition-all">
+                    <p className="text-lg font-bold text-slate-700 leading-tight pr-4">{note.text}</p>
+                    <button onClick={() => deleteNote(note.id)} className="p-4 bg-white text-red-400 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all shadow-sm">
+                      <Trash2 size={24} />
+                    </button>
+                  </div>
+                ))}
+                {announcements.length === 0 && (
+                  <div className="text-center py-20 opacity-20 font-black uppercase tracking-[0.3em]">Nema aktivnih objava</div>
+                )}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
-  )
+  );
 }
