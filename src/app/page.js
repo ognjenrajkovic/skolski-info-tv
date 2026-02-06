@@ -1,15 +1,15 @@
 'use client'
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Clock, AlertTriangle, Info, MapPin } from 'lucide-react';
+import { Clock, Bell, Cake, Quote, MapPin, User, AlertTriangle } from 'lucide-react';
 
-export default function SchoolDisplay() {
+export default function TVPage() {
   const [now, setNow] = useState(new Date());
   const [data, setData] = useState({ ann: [], bdays: [], tt: [], duty: {}, sys: [], quotes: [] });
-  const [slideIndex, setSlideIndex] = useState(0);
+  const [slide, setSlide] = useState(0);
 
-  // 1. DATA FETCHING
-  const fetchData = async () => {
+  // Učitavanje podataka uz proveru grešaka
+  const loadData = async () => {
     try {
       const [ann, bdays, tt, dt, sys, qt] = await Promise.all([
         supabase.from('announcements').select('*'),
@@ -19,247 +19,173 @@ export default function SchoolDisplay() {
         supabase.from('system_settings').select('*'),
         supabase.from('quotes').select('*')
       ]);
-      setData({ 
-        ann: ann.data || [], 
-        bdays: bdays.data || [], 
-        tt: tt.data || [], 
-        duty: dt.data || {}, 
-        sys: sys.data || [], 
-        quotes: qt.data || [] 
+      
+      setData({
+        ann: ann.data || [],
+        bdays: bdays.data || [],
+        tt: tt.data || [],
+        duty: dt.data || { teacher_name: 'Није унето' },
+        sys: sys.data || [],
+        quotes: qt.data || []
       });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Greška u bazi:", e); }
   };
 
   useEffect(() => {
-    fetchData();
-    const clockInterval = setInterval(() => setNow(new Date()), 1000);
-    const dataInterval = setInterval(fetchData, 30000); // Svakih 30s osvežava podatke
-    const slideInterval = setInterval(() => setSlideIndex(prev => (prev + 1) % 4), 10000); // 10s slajd
+    loadData();
+    const timer = setInterval(() => setNow(new Date()), 1000); // Sat
+    const refresher = setInterval(loadData, 30000); // Osvežavanje podataka
+    const slider = setInterval(() => setSlide(prev => (prev + 1) % 4), 10000); // Slajdovi
 
-    return () => { clearInterval(clockInterval); clearInterval(dataInterval); clearInterval(slideInterval); };
+    return () => { clearInterval(timer); clearInterval(refresher); clearInterval(slider); };
   }, []);
 
-  // 2. LOGIKA SATNICE I STATUSA
+  // Logika za smene i časove
   const status = useMemo(() => {
-    const totalMinutes = (now.getHours() * 60) + now.getMinutes();
+    const mins = now.getHours() * 60 + now.getMinutes();
     
-    // Fiksna satnica (Standardna srpska škola) - Prilagodi ako treba
-    // Pretvaramo sve u minute od ponoći radi lakšeg računanja
-    const shifts = {
-      1: { s: 8*60, e: 8*60+45 },    // 1. čas: 08:00 - 08:45
-      2: { s: 8*60+50, e: 9*60+35 }, // 2. čas: 08:50 - 09:35
-      3: { s: 9*60+55, e: 10*60+40 },// 3. čas: 09:55 - 10:40 (Veliki odmor pre ovoga)
-      4: { s: 10*60+45, e: 11*60+30 },
-      5: { s: 11*60+35, e: 12*60+20 },
-      6: { s: 12*60+25, e: 13*60+10 },
-    };
-    // Popodnevna smena (+6h recimo) - ovo je primer, prilagodi.
+    // Prosta satnica (početak i kraj časa u minutima)
+    const timetable = [
+      { id: 1, s: 480, e: 525 }, // 08:00 - 08:45
+      { id: 2, s: 530, e: 575 }, // 08:50 - 09:35
+      { id: 3, s: 595, e: 640 }, // 09:55 - 10:40
+      { id: 4, s: 645, e: 690 }, // 10:45 - 11:30
+      { id: 5, s: 695, e: 740 }, // 11:35 - 12:20
+      { id: 6, s: 745, e: 790 }, // 12:25 - 13:10
+    ];
 
-    let currentPeriod = null;
-    let nextPeriod = null;
-    let breakType = null; // 'mali', 'veliki', 'nema'
-
-    // Prosta logika za primer (samo pre podne radi stabilnosti)
-    Object.entries(shifts).forEach(([key, val]) => {
-      if (totalMinutes >= val.s && totalMinutes < val.e) currentPeriod = parseInt(key);
-    });
-
-    // Ako nije čas, nađi sledeći
-    if (!currentPeriod) {
-      Object.entries(shifts).forEach(([key, val]) => {
-        if (totalMinutes < val.s && !nextPeriod) nextPeriod = parseInt(key);
-      });
-    }
-
-    // Tajmer logika
-    let targetTime = 0;
-    let label = '';
+    const current = timetable.find(t => mins >= t.s && mins < t.e);
+    const next = timetable.find(t => mins < t.s);
     
-    if (currentPeriod) {
-      targetTime = shifts[currentPeriod].e * 60; // u sekundama
-      label = 'ДО КРАЈА ЧАСА';
-    } else if (nextPeriod) {
-      targetTime = shifts[nextPeriod].s * 60;
-      label = (nextPeriod === 3) ? 'ВЕЛИКИ ОДМОР' : 'ОДМОР';
+    // Računanje tajmera
+    let target = 0;
+    let label = "";
+    
+    if (current) {
+      target = current.e * 60;
+      label = "ДО КРАЈА ЧАСА";
+    } else if (next) {
+      target = next.s * 60;
+      label = (next.id === 3) ? "ВЕЛИКИ ОДМОР" : "ОДМОР";
     } else {
-      label = 'КРАЈ НАСТАВЕ';
+      label = "КРАЈ НАСТАВЕ";
     }
 
-    const nowSec = (now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds();
-    const diff = targetTime - nowSec;
+    const diff = target - ((now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds());
     const timer = diff > 0 ? `${Math.floor(diff/60)}:${(diff%60).toString().padStart(2,'0')}` : "00:00";
 
-    // Nađi predmet iz baze
-    const dayNames = ["Недеља", "Понедељак", "Уторак", "Среда", "Четвртак", "Петак", "Субота"];
-    const currentDay = dayNames[now.getDay()];
-    
-    // Tražimo u bazi čas koji odgovara trenutnom periodu
-    const activeClass = data.tt.find(t => t.day === currentDay && t.period == (currentPeriod || nextPeriod));
+    // Dan u nedelji
+    const days = ["Недеља", "Понедељак", "Уторак", "Среда", "Четвртак", "Петак", "Субота"];
+    const today = days[now.getDay()];
 
-    return {
-      period: currentPeriod,
-      next: nextPeriod,
-      label,
-      timer,
-      activeClass,
-      emergency: data.sys.find(s => s.key === 'emergency')?.value === 'true',
-      news: data.sys.find(s => s.key === 'breaking_news')?.value
-    };
+    // Pronađi čas u bazi
+    const activeClass = data.tt.find(t => t.day === today && t.period === (current ? current.id : (next ? next.id : 0)));
+    
+    // Provera za uzbunu i vesti
+    const emergency = data.sys.find(s => s.key === 'emergency')?.value === 'true';
+    const news = data.sys.find(s => s.key === 'breaking_news')?.value || '';
+
+    return { timer, label, activeClass, emergency, news };
   }, [now, data]);
 
-  // 3. HITAN SLUČAJ (UZBUNA)
+  // EKRAN ZA UZBUNU
   if (status.emergency) return (
-    <div className="h-screen w-screen bg-red-600 flex flex-col items-center justify-center text-white z-50 fixed inset-0">
-      <AlertTriangle size={300} className="animate-bounce mb-10" />
-      <h1 className="text-[20vh] font-black uppercase tracking-tighter leading-none">УЗБУНА</h1>
-      <p className="text-5xl font-bold uppercase mt-8 animate-pulse">МОЛИМО НАПУСТИТЕ ОБЈЕКАТ</p>
+    <div className="h-screen bg-red-600 flex flex-col items-center justify-center text-white z-50">
+      <AlertTriangle size={200} className="animate-bounce mb-8"/>
+      <h1 className="text-[15vw] font-black uppercase leading-none">УЗБУНА</h1>
+      <p className="text-4xl mt-4 font-bold uppercase">Хитно напустите објекат</p>
     </div>
   );
 
   return (
-    <div className="h-screen w-screen bg-[#F0F4F8] flex flex-col font-sans text-slate-900 overflow-hidden">
+    <div className="h-screen bg-slate-100 flex flex-col overflow-hidden font-sans text-slate-900">
       
-      {/* HEADER (15%) - Bela traka */}
-      <div className="h-[15vh] bg-white border-b-4 border-blue-600 flex items-center justify-between px-10 shadow-lg z-20">
-        <div className="flex items-center gap-6">
-          <img src="/logo.png" alt="Logo" className="h-24 w-auto" />
+      {/* HEADER */}
+      <div className="h-24 bg-white border-b-4 border-blue-600 flex items-center justify-between px-8 shadow z-10">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 bg-blue-100 rounded-full flex items-center justify-center font-black text-blue-600">Ш</div>
           <div>
-            <h1 className="text-4xl font-black uppercase italic tracking-tighter text-slate-800">ОШ „КАРАЂОРЂЕ”</h1>
-            <p className="text-blue-600 font-bold uppercase text-sm tracking-[0.4em]">ИНФОРМАТИВНИ СИСТЕМ</p>
+            <h1 className="text-2xl font-black uppercase italic">Основна Школа</h1>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Информациони систем</p>
           </div>
         </div>
-        
-        {/* Sat i Tajmer */}
-        <div className="flex items-center gap-12">
-           <div className="text-right">
-             <p className="text-xs font-bold uppercase text-slate-400 mb-1 tracking-widest">{status.label}</p>
-             <p className={`text-6xl font-black tabular-nums ${status.period ? 'text-blue-600' : 'text-orange-500'}`}>{status.timer}</p>
-           </div>
-           <div className="h-16 w-1 bg-slate-200"></div>
-           <div className="text-[5rem] font-black tabular-nums leading-none tracking-tight text-slate-900">
-             {now.getHours()}:{now.getMinutes().toString().padStart(2, '0')}
-           </div>
+        <div className="text-5xl font-black tabular-nums text-slate-800">
+          {now.getHours()}:{now.getMinutes().toString().padStart(2,'0')}
         </div>
       </div>
 
-      {/* BODY (77%) - Grid Layout */}
-      <div className="flex-1 grid grid-cols-12 p-8 gap-8">
+      {/* GLAVNI SADRŽAJ (GRID) */}
+      <div className="flex-1 p-6 grid grid-cols-3 gap-6">
         
-        {/* LEVA STRANA (STATUS) - 8 Kolona */}
-        <div className="col-span-8 flex flex-col gap-6">
-           
-           {/* Glavna kartica časa */}
-           <div className="flex-1 bg-white rounded-[2rem] shadow-xl border border-white p-12 flex flex-col justify-center items-center text-center relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-4 bg-blue-600" />
-              
-              {status.activeClass ? (
-                <>
-                  <p className="text-2xl font-black uppercase text-slate-300 tracking-[0.5em] mb-8">
-                    {status.period ? 'ТРЕНУТНО СЕ ОДРЖАВА' : 'СЛЕДЕЋИ ЧАС'}
-                  </p>
-                  <h2 className="text-[8rem] leading-[0.9] font-black uppercase text-slate-900 mb-8 italic tracking-tighter">
-                    {status.activeClass.class_name}
-                  </h2>
-                  <div className="inline-block bg-slate-900 text-white text-5xl font-black px-12 py-6 rounded-full shadow-2xl">
-                    <MapPin className="inline mr-4 mb-2" size={40}/>
-                    {status.activeClass.room}
-                  </div>
-                </>
-              ) : (
-                <div className="opacity-20">
-                  <p className="text-6xl font-black uppercase">НЕМА НАСТАВЕ</p>
+        {/* LEVO: STATUS (2 Kolone) */}
+        <div className="col-span-2 flex flex-col gap-6">
+          <div className="flex-1 bg-white rounded-3xl shadow-sm border p-8 flex flex-col items-center justify-center text-center relative overflow-hidden">
+            <p className="text-sm font-black uppercase text-slate-400 tracking-widest mb-4">{status.label}</p>
+            <div className="text-[8rem] font-black leading-none mb-8 text-blue-600 tabular-nums">{status.timer}</div>
+            
+            {status.activeClass ? (
+              <div className="w-full">
+                <h2 className="text-5xl font-black uppercase mb-4 text-slate-800">{status.activeClass.class_name}</h2>
+                <div className="inline-flex items-center gap-3 bg-slate-900 text-white px-8 py-3 rounded-full text-2xl font-bold uppercase">
+                  <MapPin size={24}/> {status.activeClass.room}
                 </div>
-              )}
-           </div>
+              </div>
+            ) : (
+              <div className="opacity-30 text-4xl font-black uppercase">Нема наставе</div>
+            )}
+          </div>
 
-           {/* Kartica Dežurstvo */}
-           <div className="h-32 bg-blue-600 rounded-[1.5rem] shadow-xl flex items-center px-10 justify-between text-white">
-              <div className="flex items-center gap-6">
-                <div className="p-4 bg-white/20 rounded-full"><User size={32} /></div>
-                <div>
-                   <p className="text-xs font-bold uppercase opacity-60 tracking-widest">ДЕЖУРНИ НАСТАВНИК</p>
-                   <p className="text-3xl font-black uppercase">{data.duty.teacher_name || '---'}</p>
-                </div>
-              </div>
-              <div className="text-right opacity-40">
-                <p className="font-black text-sm">ШКОЛСКА<br/>ГОДИНА</p>
-                <p className="text-2xl font-black">2023/24</p>
-              </div>
-           </div>
+          <div className="h-24 bg-blue-600 rounded-2xl text-white flex items-center px-8 shadow-lg">
+             <div className="bg-white/20 p-3 rounded-full mr-4"><User/></div>
+             <div>
+               <p className="text-xs uppercase font-bold opacity-70">Дежурни наставник</p>
+               <p className="text-2xl font-black uppercase">{data.duty?.teacher_name || 'Непознат'}</p>
+             </div>
+          </div>
         </div>
 
-        {/* DESNA STRANA (SLAJDOVI) - 4 Kolone */}
-        <div className="col-span-4 bg-slate-800 rounded-[2rem] shadow-2xl p-10 text-white relative flex flex-col justify-center text-center border-b-[16px] border-slate-900">
-           
-           {slideIndex === 0 && (
-             <div className="animate-in fade-in zoom-in duration-500">
-               <div className="bg-white/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-8"><Bell size={40}/></div>
-               <h3 className="text-xl font-bold uppercase text-blue-300 tracking-widest mb-6">ОБАВЕШТЕЊЕ</h3>
-               <p className="text-3xl font-bold leading-snug">"{data.ann[0]?.text || "Добродошли!"}"</p>
-             </div>
-           )}
-
-           {slideIndex === 1 && (
-             <div className="animate-in slide-in-from-right duration-500">
-               <div className="bg-white/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-8"><Cake size={40} className="text-pink-400"/></div>
-               <h3 className="text-xl font-bold uppercase text-pink-300 tracking-widest mb-6">ДАНАС СЛАВЕ</h3>
-               <div className="space-y-3">
-                 {data.bdays.slice(0,4).map((b,i) => (
-                   <div key={i} className="bg-white/5 p-3 rounded-lg font-bold uppercase border-l-4 border-pink-500 text-left">
-                     {b.name} <span className="float-right text-pink-300">{b.class_name}</span>
-                   </div>
-                 ))}
-                 {data.bdays.length === 0 && <p className="opacity-50 italic">Нема рођендана данас.</p>}
-               </div>
-             </div>
-           )}
-
-           {slideIndex === 2 && (
-             <div className="animate-in fade-in duration-500">
-               <div className="bg-white/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-8"><Quote size={40}/></div>
-               <p className="text-2xl italic mb-6">"{data.quotes[0]?.text}"</p>
-               <p className="font-black uppercase tracking-widest text-blue-400">- {data.quotes[0]?.author}</p>
-             </div>
-           )}
-
-            {slideIndex === 3 && (
-             <div className="animate-in fade-in duration-500">
-               <div className="bg-white/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-8"><Info size={40} className="text-emerald-400"/></div>
-               <h3 className="text-xl font-bold uppercase text-emerald-300 tracking-widest mb-6">ВАЖНИ ТЕЛЕФОНИ</h3>
-               <ul className="text-xl font-bold space-y-4">
-                 <li>Секретаријат: 011/123-456</li>
-                 <li>Педагог: 011/123-457</li>
-                 <li>Директор: 011/123-458</li>
-               </ul>
-             </div>
-           )}
-           
-           {/* Indikatori slajda */}
-           <div className="absolute bottom-8 left-0 w-full flex justify-center gap-2">
-             {[0,1,2,3].map(i => (
-               <div key={i} className={`h-2 rounded-full transition-all ${slideIndex === i ? 'w-8 bg-blue-500' : 'w-2 bg-slate-600'}`} />
-             ))}
-           </div>
+        {/* DESNO: SLAJDOVI (1 Kolona) */}
+        <div className="col-span-1 bg-slate-800 rounded-3xl p-8 text-white relative flex flex-col justify-center text-center shadow-xl border-t-8 border-slate-600">
+          {slide === 0 && (
+            <div className="animate-pulse">
+              <Bell className="mx-auto mb-6 w-16 h-16 text-yellow-400"/>
+              <h3 className="text-xl font-bold uppercase text-slate-400 mb-4">Обавештење</h3>
+              <p className="text-2xl font-bold leading-tight">"{data.ann[0]?.text || 'Добродошли'}"</p>
+            </div>
+          )}
+          {slide === 1 && (
+            <div>
+              <Cake className="mx-auto mb-6 w-16 h-16 text-pink-400"/>
+              <h3 className="text-xl font-bold uppercase text-pink-200 mb-4">Рођендани</h3>
+              {data.bdays.length > 0 ? data.bdays.slice(0,3).map((b,i) => (
+                <div key={i} className="bg-white/10 p-2 mb-2 rounded font-bold uppercase">{b.name}</div>
+              )) : <p>Нема рођендана</p>}
+            </div>
+          )}
+          {slide === 2 && (
+            <div>
+              <Quote className="mx-auto mb-6 w-16 h-16 text-blue-300"/>
+              <p className="text-xl italic mb-4">"{data.quotes[0]?.text}"</p>
+              <p className="font-bold uppercase text-sm opacity-60">- {data.quotes[0]?.author}</p>
+            </div>
+          )}
+          {slide === 3 && (
+            <div>
+               <Clock className="mx-auto mb-6 w-16 h-16 text-emerald-400"/>
+               <p className="text-2xl font-black">{now.getDate()}. {now.toLocaleString('default', { month: 'long' })}</p>
+               <p className="text-lg opacity-50 uppercase">{now.getFullYear()}</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* FOOTER (8%) - Vesti */}
+      {/* FOOTER: VESTI */}
       {status.news && (
-        <div className="h-[8vh] bg-amber-400 flex items-center overflow-hidden z-20">
-           <div className="bg-amber-600 h-full px-10 flex items-center font-black text-white uppercase text-xl z-10 shadow-lg">ВЕСТИ</div>
-           <div className="flex-1 whitespace-nowrap overflow-hidden flex items-center">
-             <div className="animate-marquee inline-block text-2xl font-black uppercase text-slate-900">
-               {status.news} &nbsp; • &nbsp; {status.news} &nbsp; • &nbsp; {status.news} &nbsp; • &nbsp; {status.news}
-             </div>
-           </div>
+        <div className="bg-yellow-400 text-yellow-900 py-3 px-4 font-black text-xl uppercase overflow-hidden whitespace-nowrap flex items-center shadow-inner">
+          <span className="bg-yellow-600 text-white px-3 py-1 rounded mr-4 text-sm">ВЕСТИ</span>
+          <marquee scrollamount="10">{status.news}  *** {status.news}  *** {status.news}</marquee>
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .animate-marquee { animation: marquee 30s linear infinite; }
-        .font-sans { font-family: 'Inter', sans-serif; }
-      `}</style>
     </div>
   );
 }
