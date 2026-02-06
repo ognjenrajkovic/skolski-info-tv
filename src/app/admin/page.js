@@ -1,28 +1,25 @@
 'use client'
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Lock, Save, Trash2, Plus, RefreshCw, UserCheck, Calendar, Bell, Cake, Quote, LogOut } from 'lucide-react';
+import { 
+  Lock, Save, Trash2, Plus, RefreshCw, UserCheck, 
+  Calendar, Bell, Cake, Quote, LogOut, AlertTriangle, Settings 
+} from 'lucide-react';
 
 export default function AdminPanel() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState('announcements');
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState([]);
+  const [data, setData] = useState({ ann: [], bdays: [], tt: [], sys: [], quotes: [] });
   const [morningShift, setMorningShift] = useState('Parna');
+  const [emergency, setEmergency] = useState('НОРМАЛНО');
   
-  // Obične forme
+  // Forme
   const [itemForm, setItemForm] = useState({});
-  
-  // Dežurstvo
   const [duty, setDuty] = useState({ teacher_name: '', student_names: '', floor: 'Приземље' });
-
-  // Raspored (Bulk)
   const [timetableForm, setTimetableForm] = useState({
-    day: 'Понедељак',
-    shift: 'Parna',
-    time_of_day: 'Pre podne',
-    rows: [{ class_name: '', room: '' }]
+    day: 'Понедељак', shift: 'Parna', time_of_day: 'Pre podne', rows: [{ class_name: '', room: '', period: 1 }]
   });
 
   const checkPassword = async () => {
@@ -36,23 +33,36 @@ export default function AdminPanel() {
 
   const fetchData = async () => {
     setLoading(true);
-    if (activeTab === 'duty') {
-      const { data: res } = await supabase.from('duty_staff').select('*').single();
-      if (res) setDuty(res);
-    } else {
-      const { data: res } = await supabase.from(activeTab).select('*');
-      setData(res || []);
-    }
-    const { data: sh } = await supabase.from('system_settings').select('*').eq('key', 'current_morning_shift').single();
+    const [ann, bdays, tt, dt, sys, qt] = await Promise.all([
+      supabase.from('announcements').select('*'),
+      supabase.from('birthdays').select('*'),
+      supabase.from('timetable').select('*'),
+      supabase.from('duty_staff').select('*').single(),
+      supabase.from('system_settings').select('*'),
+      supabase.from('quotes').select('*')
+    ]);
+    
+    setData({ ann: ann.data, bdays: bdays.data, tt: tt.data, sys: sys.data, quotes: qt.data });
+    if (dt.data) setDuty(dt.data);
+    
+    const sh = sys.data?.find(s => s.key === 'current_morning_shift');
+    const em = sys.data?.find(s => s.key === 'emergency');
     if (sh) setMorningShift(sh.value);
+    if (em) setEmergency(em.value);
     setLoading(false);
   };
 
   useEffect(() => { if (isAuthenticated) fetchData(); }, [activeTab, isAuthenticated]);
 
-  const updateMorningShift = async (val) => {
-    setMorningShift(val);
-    await supabase.from('system_settings').upsert({ key: 'current_morning_shift', value: val });
+  const toggleEmergency = async () => {
+    const newVal = emergency === 'НОРМАЛНО' ? 'УЗБУНА' : 'НОРМАЛНО';
+    setEmergency(newVal);
+    await supabase.from('system_settings').upsert({ key: 'emergency', value: newVal });
+  };
+
+  const updateSetting = async (key, val) => {
+    await supabase.from('system_settings').upsert({ key, value: val.toString() });
+    fetchData();
   };
 
   const saveDuty = async () => {
@@ -68,31 +78,19 @@ export default function AdminPanel() {
     fetchData();
   };
 
-  const deleteItem = async (id) => {
-    if(confirm("Да ли сте сигурни?")) {
-      await supabase.from(activeTab).delete().eq('id', id);
+  const deleteItem = async (table, id) => {
+    if(confirm("Обрисати ставку?")) {
+      await supabase.from(table).delete().eq('id', id);
       fetchData();
     }
   };
 
   const saveTimetable = async () => {
-    const toInsert = timetableForm.rows
-      .filter(r => r.class_name && r.room)
-      .map(r => ({
-        day: timetableForm.day,
-        shift: timetableForm.shift,
-        time_of_day: timetableForm.time_of_day,
-        class_name: r.class_name,
-        room: r.room
-      }));
-
-    if (toInsert.length === 0) return;
-
+    const toInsert = timetableForm.rows.filter(r => r.class_name && r.room).map(r => ({
+      ...r, day: timetableForm.day, shift: timetableForm.shift, time_of_day: timetableForm.time_of_day
+    }));
     await supabase.from('timetable').delete()
-      .eq('day', timetableForm.day)
-      .eq('shift', timetableForm.shift)
-      .eq('time_of_day', timetableForm.time_of_day);
-
+      .eq('day', timetableForm.day).eq('shift', timetableForm.shift).eq('time_of_day', timetableForm.time_of_day);
     await supabase.from('timetable').insert(toInsert);
     alert("Распоред сачуван!");
     fetchData();
@@ -100,176 +98,152 @@ export default function AdminPanel() {
 
   if (!isAuthenticated) {
     return (
-      <div className="h-screen w-screen bg-[#0F172A] flex items-center justify-center p-6">
+      <div className="h-screen w-screen bg-slate-900 flex items-center justify-center p-6">
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md text-center">
-          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6 text-blue-600">
-            <Lock size={40} />
-          </div>
-          <h1 className="text-3xl font-black uppercase mb-2 tracking-tighter text-slate-900">Приступ Панелу</h1>
-          <p className="text-slate-400 font-bold mb-8 uppercase text-xs tracking-[0.2em]">Унесите администраторску лозинку</p>
-          <input type="password" placeholder="••••••••" className="w-full p-5 bg-slate-100 rounded-[2rem] mb-4 text-center font-black text-2xl focus:ring-4 ring-blue-100 outline-none transition-all" 
+          <Lock size={50} className="mx-auto text-blue-600 mb-6" />
+          <h1 className="text-2xl font-black uppercase mb-6 tracking-tighter">Админ Панел</h1>
+          <input type="password" placeholder="Унесите шифру" className="w-full p-5 bg-slate-100 rounded-2xl mb-4 text-center font-bold text-xl" 
             onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && checkPassword()}/>
-          <button onClick={checkPassword} className="w-full bg-blue-600 text-white p-5 rounded-[2rem] font-black uppercase hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">Пријави се</button>
+          <button onClick={checkPassword} className="w-full bg-blue-600 text-white p-5 rounded-2xl font-black uppercase hover:bg-blue-700 transition-all">Приступи</button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex font-sans">
+    <div className="min-h-screen bg-slate-50 flex font-sans">
       {/* SIDEBAR */}
-      <div className="w-80 bg-slate-900 text-white p-8 flex flex-col gap-3">
-        <div className="mb-10 px-4">
-            <h2 className="text-2xl font-black text-blue-400 italic uppercase tracking-tighter">TV ПАНЕЛ</h2>
-            <p className="text-[10px] text-slate-500 font-bold tracking-[0.3em] uppercase">Администрација</p>
-        </div>
+      <div className="w-72 bg-slate-900 text-white p-8 flex flex-col gap-2">
+        <h2 className="text-xl font-black text-blue-400 mb-8 italic uppercase tracking-tighter">TV КОНТРОЛА</h2>
         
         <nav className="space-y-1 flex-1">
-            <button onClick={() => setActiveTab('announcements')} className={`w-full p-4 rounded-2xl font-bold flex items-center gap-4 transition-all ${activeTab === 'announcements' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Bell size={20}/> Обавештења
+          {[
+            { id: 'announcements', icon: <Bell size={18}/>, label: 'Обавештења' },
+            { id: 'timetable', icon: <Calendar size={18}/>, label: 'Распоред' },
+            { id: 'duty', icon: <UserCheck size={18}/>, label: 'Дежурство' },
+            { id: 'birthdays', icon: <Cake size={18}/>, label: 'Рођендани' },
+            { id: 'quotes', icon: <Quote size={18}/>, label: 'Цитати' },
+            { id: 'settings', icon: <Settings size={18}/>, label: 'Подешавања' },
+          ].map(item => (
+            <button key={item.id} onClick={() => setActiveTab(item.id)} 
+              className={`w-full p-4 rounded-xl font-bold flex items-center gap-4 transition-all ${activeTab === item.id ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              {item.icon} {item.label}
             </button>
-            <button onClick={() => setActiveTab('timetable')} className={`w-full p-4 rounded-2xl font-bold flex items-center gap-4 transition-all ${activeTab === 'timetable' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Calendar size={20}/> Распоред
-            </button>
-            <button onClick={() => setActiveTab('duty')} className={`w-full p-4 rounded-2xl font-bold flex items-center gap-4 transition-all ${activeTab === 'duty' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <UserCheck size={20}/> Дежурство
-            </button>
-            <button onClick={() => setActiveTab('birthdays')} className={`w-full p-4 rounded-2xl font-bold flex items-center gap-4 transition-all ${activeTab === 'birthdays' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Cake size={20}/> Рођендани
-            </button>
-            <button onClick={() => setActiveTab('quotes')} className={`w-full p-4 rounded-2xl font-bold flex items-center gap-4 transition-all ${activeTab === 'quotes' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Quote size={20}/> Цитати
-            </button>
+          ))}
         </nav>
-        
-        <button onClick={() => setIsAuthenticated(false)} className="mt-auto flex items-center justify-center gap-2 p-4 text-slate-500 font-bold hover:text-white transition-all uppercase text-xs tracking-widest">
-            <LogOut size={16}/> Одјави се
+
+        {/* EMERGENCY BUTTON IN SIDEBAR */}
+        <button onClick={toggleEmergency} 
+          className={`w-full p-5 rounded-2xl font-black flex items-center justify-center gap-3 transition-all animate-pulse ${emergency === 'УЗБУНА' ? 'bg-white text-red-600' : 'bg-red-600 text-white hover:bg-red-700'}`}>
+          <AlertTriangle size={24}/> {emergency === 'УЗБУНА' ? 'ПРЕКИНИ' : 'УЗБУНА'}
+        </button>
+
+        <button onClick={() => setIsAuthenticated(false)} className="mt-4 flex items-center justify-center gap-2 p-4 text-slate-500 font-bold hover:text-white transition-all uppercase text-[10px] tracking-widest">
+          <LogOut size={14}/> Одјави се
         </button>
       </div>
 
       <div className="flex-1 p-12 overflow-y-auto">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           
-          {/* HEADER AKCIJE */}
           <div className="flex justify-between items-center mb-10">
-              <div>
-                  <h2 className="text-4xl font-[1000] text-slate-900 uppercase italic tracking-tighter">Управљање: {activeTab}</h2>
-                  <p className="text-slate-400 font-bold mt-1 uppercase text-xs tracking-widest">Школски инфо систем v2.0</p>
-              </div>
-              
-              {/* SMENA TOGGLE */}
-              <div className="bg-white p-2 rounded-[2rem] shadow-sm flex gap-2 border border-slate-200">
-                  <button onClick={() => updateMorningShift('Parna')} className={`px-6 py-2 rounded-[1.5rem] font-black text-xs transition-all ${morningShift === 'Parna' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>ПАРНА ПРЕ ПОДНЕ</button>
-                  <button onClick={() => updateMorningShift('Neparna')} className={`px-6 py-2 rounded-[1.5rem] font-black text-xs transition-all ${morningShift === 'Neparna' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}>НЕПАРНА ПРЕ ПОДНЕ</button>
+              <h2 className="text-3xl font-black text-slate-900 uppercase italic">Управљање: {activeTab}</h2>
+              <div className="flex gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+                <button onClick={() => updateSetting('current_morning_shift', 'Parna')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${morningShift === 'Parna' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>ПАРНА ПРЕ ПОДНЕ</button>
+                <button onClick={() => updateSetting('current_morning_shift', 'Neparna')} className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${morningShift === 'Neparna' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>НЕПАРНА ПРЕ ПОДНЕ</button>
               </div>
           </div>
 
-          {/* SADRŽAJ TABOVA */}
-          <div className="bg-white rounded-[3.5rem] p-12 shadow-sm border border-slate-200">
-            
-            {/* OBAVEŠTENJA / ROĐENDANI / CITATI */}
-            {(activeTab === 'announcements' || activeTab === 'birthdays' || activeTab === 'quotes') && (
-              <div className="space-y-10">
-                <form onSubmit={handleSimpleSave} className="grid grid-cols-2 gap-4 bg-slate-50 p-8 rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                  {activeTab === 'announcements' && <textarea placeholder="Текст обавештења..." className="col-span-2 p-5 rounded-2xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({text: e.target.value})} required />}
-                  {activeTab === 'birthdays' && (
-                    <>
-                      <input placeholder="Име и презиме" className="p-5 rounded-2xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, name: e.target.value})} required />
-                      <input placeholder="Одељење" className="p-5 rounded-2xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, class_name: e.target.value})} required />
-                    </>
-                  )}
-                  {activeTab === 'quotes' && (
-                    <>
-                      <textarea placeholder="Цитат..." className="col-span-2 p-5 rounded-2xl border-0 ring-1 ring-slate-200 font-bold italic" onChange={e => setItemForm({...itemForm, text: e.target.value})} required />
-                      <input placeholder="Аутор" className="col-span-2 p-5 rounded-2xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, author: e.target.value})} required />
-                    </>
-                  )}
-                  <button type="submit" className="col-span-2 bg-blue-600 text-white p-5 rounded-[1.5rem] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2"><Plus/> Додај ставку</button>
-                </form>
-
-                <div className="space-y-3">
-                  {data.map(item => (
-                    <div key={item.id} className="flex justify-between items-center p-6 bg-white border border-slate-100 rounded-[2rem] hover:shadow-md transition-all group">
-                      <span className="font-bold text-slate-700">{item.text || item.name} {item.author && <span className="text-blue-400">— {item.author}</span>}</span>
-                      <button onClick={() => deleteItem(item.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"><Trash2 size={20}/></button>
-                    </div>
-                  ))}
-                </div>
+          {/* TAB: OBAVESTENJA, RODJENDANI, CITATI */}
+          {(activeTab === 'announcements' || activeTab === 'birthdays' || activeTab === 'quotes') && (
+            <div className="space-y-8 bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200">
+              <form onSubmit={handleSimpleSave} className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-3xl border-2 border-dashed">
+                {activeTab === 'announcements' && <textarea placeholder="Текст..." className="col-span-2 p-4 rounded-xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({text: e.target.value})} required />}
+                {activeTab === 'birthdays' && <>
+                    <input placeholder="Име" className="p-4 rounded-xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, name: e.target.value})} required />
+                    <input placeholder="Одељење" className="p-4 rounded-xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, class_name: e.target.value})} required />
+                </>}
+                {activeTab === 'quotes' && <>
+                    <textarea placeholder="Цитат" className="col-span-2 p-4 rounded-xl border-0 ring-1 ring-slate-200 font-bold italic" onChange={e => setItemForm({...itemForm, text: e.target.value})} required />
+                    <input placeholder="Аутор" className="col-span-2 p-4 rounded-xl border-0 ring-1 ring-slate-200 font-bold" onChange={e => setItemForm({...itemForm, author: e.target.value})} required />
+                </>}
+                <button type="submit" className="col-span-2 bg-blue-600 text-white p-4 rounded-xl font-black uppercase flex items-center justify-center gap-2 hover:bg-blue-700 transition-all"><Plus/> Додај</button>
+              </form>
+              <div className="space-y-2">
+                {(activeTab === 'announcements' ? data.ann : activeTab === 'birthdays' ? data.bdays : data.quotes)?.map(item => (
+                  <div key={item.id} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-2xl group shadow-sm">
+                    <span className="font-bold text-slate-700 truncate mr-4">{item.text || item.name}</span>
+                    <button onClick={() => deleteItem(activeTab, item.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-lg"><Trash2 size={18}/></button>
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* DEŽURSTVO */}
-            {activeTab === 'duty' && (
-              <div className="max-w-2xl mx-auto space-y-8 py-10">
-                <div className="space-y-6">
-                    <div>
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4 mb-2 block">Дежурни Наставник</label>
-                        <input className="w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-100 font-black text-xl" value={duty.teacher_name} onChange={e => setDuty({...duty, teacher_name: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4 mb-2 block">Дежурни Ученици</label>
-                        <textarea className="w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-100 font-bold text-lg" value={duty.student_names} onChange={e => setDuty({...duty, student_names: e.target.value})} />
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4 mb-2 block">Сектор / Локација</label>
-                        <select className="w-full p-6 bg-slate-50 rounded-[2rem] border-2 border-slate-100 font-black text-lg" value={duty.floor} onChange={e => setDuty({...duty, floor: e.target.value})}>
-                            <option value="Приземље">Приземље</option>
-                            <option value="Спрат I">Спрат I</option>
-                            <option value="Спрат II">Спрат II</option>
-                            <option value="Сала">Фискултурна Сала</option>
-                        </select>
-                    </div>
-                    <button onClick={saveDuty} className="w-full bg-blue-600 text-white p-6 rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:bg-blue-700 flex items-center justify-center gap-3 transition-all active:scale-95"><Save/> Сачувај Дежурство</button>
-                </div>
+          {/* TAB: TIMETABLE BULK */}
+          {activeTab === 'timetable' && (
+            <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 space-y-6">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <select className="p-4 bg-slate-50 rounded-xl font-bold" value={timetableForm.day} onChange={e => setTimetableForm({...timetableForm, day: e.target.value})}>
+                  {["Понедељак", "Уторак", "Среда", "Четвртак", "Петак"].map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select className="p-4 bg-slate-50 rounded-xl font-bold" value={timetableForm.shift} onChange={e => setTimetableForm({...timetableForm, shift: e.target.value})}>
+                  <option value="Parna">Парна Смена</option><option value="Neparna">Непарна Смена</option>
+                </select>
+                <select className="p-4 bg-slate-50 rounded-xl font-bold" value={timetableForm.time_of_day} onChange={e => setTimetableForm({...timetableForm, time_of_day: e.target.value})}>
+                  <option value="Pre podne">Пре подне</option><option value="Posle podne">После подне</option>
+                </select>
               </div>
-            )}
-
-            {/* RASPORED (BULK) */}
-            {activeTab === 'timetable' && (
-              <div className="space-y-8">
-                <div className="grid grid-cols-3 gap-4 bg-slate-900 p-6 rounded-[2.5rem]">
-                   <select className="p-4 bg-slate-800 text-white rounded-xl font-bold border-0 ring-1 ring-slate-700 outline-none" value={timetableForm.day} onChange={e => setTimetableForm({...timetableForm, day: e.target.value})}>
-                     {["Понедељак", "Уторак", "Среда", "Четвртак", "Петак"].map(d => <option key={d} value={d}>{d}</option>)}
-                   </select>
-                   <select className="p-4 bg-slate-800 text-white rounded-xl font-bold border-0 ring-1 ring-slate-700 outline-none" value={timetableForm.shift} onChange={e => setTimetableForm({...timetableForm, shift: e.target.value})}>
-                     <option value="Parna">Парна Смена</option>
-                     <option value="Neparna">Непарна Смена</option>
-                   </select>
-                   <select className="p-4 bg-slate-800 text-white rounded-xl font-bold border-0 ring-1 ring-slate-700 outline-none" value={timetableForm.time_of_day} onChange={e => setTimetableForm({...timetableForm, time_of_day: e.target.value})}>
-                     <option value="Pre podne">Пре Подне</option>
-                     <option value="Posle podne">После Подне</option>
-                   </select>
+              {timetableForm.rows.map((row, idx) => (
+                <div key={idx} className="flex gap-3">
+                  <input placeholder="Час (1-7)" type="number" className="w-24 p-4 bg-slate-50 rounded-xl font-bold" value={row.period} onChange={e => {
+                    const nr = [...timetableForm.rows]; nr[idx].period = parseInt(e.target.value); setTimetableForm({...timetableForm, rows: nr});
+                  }} />
+                  <input placeholder="Одељење" className="flex-1 p-4 bg-slate-50 rounded-xl font-bold" value={row.class_name} onChange={e => {
+                    const nr = [...timetableForm.rows]; nr[idx].class_name = e.target.value; setTimetableForm({...timetableForm, rows: nr});
+                  }} />
+                  <input placeholder="Кабинет" className="flex-1 p-4 bg-slate-50 rounded-xl font-bold" value={row.room} onChange={e => {
+                    const nr = [...timetableForm.rows]; nr[idx].room = e.target.value; setTimetableForm({...timetableForm, rows: nr});
+                  }} />
+                  <button onClick={() => setTimetableForm({...timetableForm, rows: timetableForm.rows.filter((_, i) => i !== idx)})} className="text-red-300 p-2"><Trash2/></button>
                 </div>
+              ))}
+              <button onClick={() => setTimetableForm({...timetableForm, rows: [...timetableForm.rows, { class_name: '', room: '', period: 1 }]})} className="w-full p-4 border-2 border-dashed rounded-xl font-bold text-slate-400">+ Додај ред</button>
+              <button onClick={saveTimetable} className="w-full bg-slate-900 text-white p-5 rounded-2xl font-black uppercase tracking-widest hover:bg-black"><Save className="inline mr-2"/> Сачувај цео распоред за овај термин</button>
+            </div>
+          )}
 
-                <div className="space-y-3">
-                    <div className="flex gap-4 px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        <span className="flex-1">Одељење</span>
-                        <span className="flex-1">Кабинет</span>
-                        <span className="w-12"></span>
-                    </div>
-                    {timetableForm.rows.map((row, index) => (
-                        <div key={index} className="flex gap-4 animate-in fade-in duration-300">
-                            <input className="flex-1 p-5 bg-slate-50 rounded-[1.5rem] border-2 border-slate-100 font-black text-lg focus:border-blue-500 outline-none transition-all" placeholder="нпр. VIII-1" value={row.class_name} onChange={e => {
-                                const newRows = [...timetableForm.rows];
-                                newRows[index].class_name = e.target.value;
-                                setTimetableForm({...timetableForm, rows: newRows});
-                            }} />
-                            <input className="flex-1 p-5 bg-slate-50 rounded-[1.5rem] border-2 border-slate-100 font-black text-lg focus:border-blue-500 outline-none transition-all" placeholder="нпр. Физика" value={row.room} onChange={e => {
-                                const newRows = [...timetableForm.rows];
-                                newRows[index].room = e.target.value;
-                                setTimetableForm({...timetableForm, rows: newRows});
-                            }} />
-                            <button onClick={() => setTimetableForm({...timetableForm, rows: timetableForm.rows.filter((_, i) => i !== index)})} className="w-14 h-14 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-2xl transition-all"><Trash2 size={24}/></button>
-                        </div>
-                    ))}
-                    <button onClick={() => setTimetableForm({...timetableForm, rows: [...timetableForm.rows, { class_name: '', room: '' }]})} className="w-full p-5 border-2 border-dashed border-slate-200 rounded-[1.5rem] font-black text-slate-400 hover:bg-slate-50 flex items-center justify-center gap-2 tracking-widest uppercase text-xs transition-all"><Plus size={18}/> Додај одељење у овај термин</button>
-                </div>
+          {/* TAB: DEZURSTVO */}
+          {activeTab === 'duty' && (
+            <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 space-y-6">
+              <input placeholder="Дежурни наставник" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-xl" value={duty.teacher_name} onChange={e => setDuty({...duty, teacher_name: e.target.value})} />
+              <textarea placeholder="Дежурни ученици" className="w-full p-5 bg-slate-50 rounded-2xl font-bold text-lg" value={duty.student_names} onChange={e => setDuty({...duty, student_names: e.target.value})} />
+              <button onClick={saveDuty} className="w-full bg-blue-600 text-white p-5 rounded-2xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100"><Save className="inline mr-2"/> Сачувај</button>
+            </div>
+          )}
 
-                <button onClick={saveTimetable} className="w-full bg-slate-900 text-white p-6 rounded-[2rem] font-black uppercase tracking-widest hover:bg-black shadow-2xl transition-all flex items-center justify-center gap-3 active:scale-[0.98]"><Save/> Сачувај цео распоред за изабрани термин</button>
+          {/* TAB: SETTINGS */}
+          {activeTab === 'settings' && (
+            <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-200 space-y-10">
+              <div className="flex justify-between items-center p-6 bg-slate-50 rounded-3xl">
+                <div><p className="font-black text-xl tracking-tighter uppercase">Брзина ротације</p><p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Секунди по слајду</p></div>
+                <input type="range" min="5000" max="30000" step="1000" value={data.sys?.find(s => s.key === 'rotation_speed')?.value || 15000} 
+                  onChange={(e) => updateSetting('rotation_speed', e.target.value)} className="w-1/2 cursor-pointer" />
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-4">
+                 {['show_birthdays', 'show_announcements', 'show_quotes', 'show_weather'].map(key => {
+                   const val = data.sys?.find(s => s.key === key)?.value === 'true';
+                   return (
+                    <button key={key} onClick={() => updateSetting(key, (!val).toString())} className={`flex justify-between items-center p-6 rounded-3xl border-2 transition-all ${val ? 'border-blue-100 bg-blue-50/30' : 'border-slate-100 opacity-50'}`}>
+                      <span className="font-black text-xs uppercase tracking-widest text-slate-600">{key.split('_').join(' ')}</span>
+                      <div className={`w-12 h-6 rounded-full flex items-center p-1 transition-all ${val ? 'bg-blue-600 justify-end' : 'bg-slate-300 justify-start'}`}><div className="w-4 h-4 bg-white rounded-full shadow-sm" /></div>
+                    </button>
+                   );
+                 })}
+              </div>
+            </div>
+          )}
 
-          </div>
         </div>
       </div>
     </div>
