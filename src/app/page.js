@@ -1,185 +1,234 @@
 'use client'
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Clock, Bell, Cake, Quote, Sun, AlertTriangle } from 'lucide-react';
+import { Clock, Bell, Cake, Quote, Sun, AlertTriangle, User } from 'lucide-react';
 
-export default function MainDisplay() {
+export default function SchoolTV() {
   const [now, setNow] = useState(new Date());
   const [data, setData] = useState({ ann: [], bdays: [], tt: [], duty: {}, sys: [], quotes: [] });
-  const [slide, setSlide] = useState(0);
+  const [activeSlide, setActiveSlide] = useState(0);
 
-  const fetchData = async () => {
-    const [ann, bdays, tt, dt, sys, qt] = await Promise.all([
-      supabase.from('announcements').select('*'),
-      supabase.from('birthdays').select('*'),
-      supabase.from('timetable').select('*'),
-      supabase.from('duty_staff').select('*').single(),
-      supabase.from('system_settings').select('*'),
-      supabase.from('quotes').select('*')
-    ]);
-    setData({ ann: ann.data || [], bdays: bdays.data || [], tt: tt.data || [], duty: dt.data || {}, sys: sys.data || [], quotes: qt.data || [] });
-  };
-
+  // Interval za osvežavanje
   useEffect(() => {
-    fetchData();
-    setInterval(() => setNow(new Date()), 1000);
-    setInterval(fetchData, 60000);
-    setInterval(() => setSlide(s => (s + 1) % 4), 10000);
+    const load = async () => {
+      const [ann, bdays, tt, dt, sys, qt] = await Promise.all([
+        supabase.from('announcements').select('*'),
+        supabase.from('birthdays').select('*'),
+        supabase.from('timetable').select('*'),
+        supabase.from('duty_staff').select('*').single(),
+        supabase.from('system_settings').select('*'),
+        supabase.from('quotes').select('*')
+      ]);
+      setData({ ann: ann.data || [], bdays: bdays.data || [], tt: tt.data || [], duty: dt.data || {}, sys: sys.data || [], quotes: qt.data || [] });
+    };
+    load();
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    const slider = setInterval(() => setActiveSlide(prev => (prev + 1) % 4), 10000); // Menja slajd na 10 sekundi
+    const fetcher = setInterval(load, 30000);
+    return () => { clearInterval(timer); clearInterval(slider); clearInterval(fetcher); };
   }, []);
 
   const status = useMemo(() => {
-    const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
-    const totalSec = (h * 3600) + (m * 60) + s;
-    const isMorning = (h * 60 + m) < (14 * 60);
-    const shift = data.sys.find(s => s.key === 'current_morning_shift')?.value || 'Parna';
-    const activeShift = isMorning ? shift : (shift === 'Parna' ? 'Neparna' : 'Parna');
-    const days = ["Nedelja", "Ponedeljak", "Utorak", "Sreda", "Četvrtak", "Petak", "Subota"];
+    const h = now.getHours(), m = now.getMinutes();
+    const totalSec = (h * 3600) + (m * 60) + now.getSeconds();
     
-    // Satnica (Fiksna za primer)
-    const bell = [{ n: 1, s: 28800, e: 31500 }, { n: 2, s: 31800, e: 34500 }, { n: 3, s: 36000, e: 38700 }];
-    const current = bell.find(b => totalSec >= b.s && totalSec < b.e);
-    const next = bell.find(b => totalSec < b.s);
-    const diff = (current ? current.e : (next ? next.s : 0)) - totalSec;
+    // Satnica (Podesi po potrebi)
+    const bells = [
+      { id: 1, s: 28800, e: 31500 }, { id: 2, s: 31800, e: 34500 }, // 1. i 2. čas
+      { id: 3, s: 36000, e: 38700 }, { id: 4, s: 39000, e: 41700 }  // itd...
+    ];
+    
+    const currentClass = bells.find(b => totalSec >= b.s && totalSec < b.e);
+    const nextClass = bells.find(b => totalSec < b.s);
+    
+    // Logika za countdown
+    let diff = 0;
+    if (currentClass) diff = currentClass.e - totalSec;
+    else if (nextClass) diff = nextClass.s - totalSec;
+    
     const timer = diff > 0 ? `${Math.floor(diff/60)}:${(diff%60).toString().padStart(2,'0')}` : "00:00";
+    
+    // Nađi predmet za trenutni čas (primer logike)
+    const dayName = ["Nedelja","Ponedeljak","Utorak","Sreda","Četvrtak","Petak","Subota"][now.getDay()];
+    const activeSubject = data.tt.find(t => t.day === dayName && t.period === (currentClass?.id || nextClass?.id));
 
-    const activeClass = data.tt.find(t => t.day === days[now.getDay()] && t.shift === activeShift && t.period === (current ? current.n : (next ? next.n : 0)));
-
-    return { activeClass, timer, isBreak: !current, emergency: data.sys.find(s => s.key === 'emergency')?.value === 'true', news: data.sys.find(s => s.key === 'breaking_news')?.value, video: data.sys.find(s => s.key === 'video_active')?.value === 'true', videoUrl: data.sys.find(s => s.key === 'bg_video_url')?.value };
+    return { 
+      subject: activeSubject?.class_name || "SLOBODNO", 
+      room: activeSubject?.room || "HOL", 
+      isBreak: !currentClass,
+      timer,
+      emergency: data.sys.find(s => s.key === 'emergency')?.value === 'true',
+      news: data.sys.find(s => s.key === 'breaking_news')?.value,
+      video: { 
+        on: data.sys.find(s => s.key === 'video_active')?.value === 'true', 
+        url: data.sys.find(s => s.key === 'bg_video_url')?.value,
+        mode: data.sys.find(s => s.key === 'video_mode')?.value 
+      }
+    };
   }, [now, data]);
 
+  // Video embed helper
+  const getVideoUrl = (url) => {
+    if(!url) return "";
+    const id = url.split('v=')[1]?.split('&')[0] || url.split('/').pop();
+    return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&showinfo=0&rel=0`;
+  };
+
+  // UZBUNA
   if (status.emergency) return (
-    <div className="h-screen w-screen bg-red-600 flex flex-col items-center justify-center text-white z-[9999] fixed top-0">
-      <AlertTriangle size={300} className="animate-bounce" />
-      <h1 className="text-[20vh] font-black uppercase tracking-tighter">UZBUNA</h1>
+    <div className="fixed inset-0 bg-red-600 z-[9999] flex flex-col items-center justify-center text-white animate-pulse">
+      <AlertTriangle size={300} />
+      <h1 className="text-[15vw] font-black uppercase leading-none mt-10">UZBUNA</h1>
+      <p className="text-4xl font-bold uppercase tracking-widest mt-4">Evakuacija odmah</p>
     </div>
   );
 
   return (
-    <div className="h-screen w-screen bg-[#0F172A] p-6 flex flex-col gap-6 overflow-hidden relative font-sans text-white">
+    <div className="relative h-screen w-screen overflow-hidden font-sans text-white bg-slate-900 selection:bg-blue-500 selection:text-white">
       
-      {/* 1. POZADINSKI VIDEO (AKO JE UKLJUČEN) */}
-      {status.video && (
-        <div className="absolute inset-0 z-0 opacity-40">
-           <iframe className="w-full h-full scale-[1.5]" src={`https://www.youtube.com/embed/${status.videoUrl?.split('v=')[1]}?autoplay=1&mute=1&controls=0&loop=1`} frameBorder="0" />
-        </div>
-      )}
+      {/* 1. POZADINA (VIDEO ili GRADIJENT) */}
+      <div className="absolute inset-0 z-0">
+        {status.video.on && status.video.url ? (
+          <div className="relative w-full h-full">
+            <iframe className="w-full h-full scale-150 pointer-events-none" src={getVideoUrl(status.video.url)} frameBorder="0" allow="autoplay; encrypted-media"></iframe>
+            {/* Overlay da tekst bude čitljiviji */}
+            <div className={`absolute inset-0 bg-slate-900/${status.video.mode === 'fullscreen' ? '10' : '60'}`} />
+          </div>
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 animate-gradient" />
+        )}
+      </div>
 
-      {/* 2. HEADER (TOP BOX) */}
-      <div className="h-[15vh] bg-white/10 backdrop-blur-xl rounded-[2rem] border-2 border-white/20 flex items-center justify-between px-12 z-10">
-        <div className="flex items-center gap-6">
-          <div className="bg-white p-3 rounded-2xl"><img src="/logo.png" className="h-16" /></div>
-          <div>
-            <h1 className="text-4xl font-black uppercase tracking-tighter italic">Karađorđe</h1>
-            <p className="text-blue-400 font-bold uppercase text-xs tracking-widest">Informacioni sistem</p>
+      {/* 2. GLAVNI LAYOUT (Sve je u kontejneru sa Z-10 da bude iznad videa) */}
+      <div className="relative z-10 flex flex-col h-full p-8 lg:p-12 gap-8">
+        
+        {/* HEADER: LOGO + SAT */}
+        <div className="flex justify-between items-start">
+          <div className="flex items-center gap-6">
+            <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center border border-white/20 shadow-2xl">
+              <img src="/logo.png" className="w-14 h-14 object-contain opacity-90" />
+            </div>
+            <div>
+              <h1 className="text-4xl lg:text-5xl font-black tracking-tighter italic uppercase drop-shadow-lg">Karađorđe</h1>
+              <div className="h-1 w-20 bg-blue-500 rounded-full mt-2" />
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end">
+             <div className="text-[7rem] leading-none font-black tracking-tighter drop-shadow-2xl font-mono">
+               {now.getHours()}<span className="animate-pulse">:</span>{now.getMinutes().toString().padStart(2,'0')}
+             </div>
+             <p className="text-blue-300 uppercase font-bold tracking-[0.5em] text-sm">Beograd, Srbija</p>
           </div>
         </div>
-        <div className="flex gap-8 items-center">
-           <div className="bg-blue-600/30 px-8 py-4 rounded-3xl border border-blue-500/50 text-center">
-              <p className="text-[1vh] font-black uppercase opacity-60">{status.isBreak ? 'Do početka' : 'Do kraja'}</p>
-              <p className="text-5xl font-black tabular-nums">{status.timer}</p>
-           </div>
-           <div className="text-8xl font-black tabular-nums tracking-tighter">
-             {now.getHours()}:{now.getMinutes().toString().padStart(2, '0')}
-           </div>
+
+        {/* SREDINA: GRID SISTEM */}
+        <div className="flex-1 grid grid-cols-12 gap-8 min-h-0">
+          
+          {/* LEVO: STATUS ČASA (7 kolona) */}
+          <div className="col-span-7 bg-white/5 backdrop-blur-xl rounded-[3rem] border border-white/10 shadow-2xl p-10 flex flex-col relative overflow-hidden group">
+            {/* Ukrasni sjaj */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/20 rounded-full blur-[100px] group-hover:bg-blue-500/30 transition-all" />
+            
+            <div className="flex justify-between items-start mb-12">
+               <span className={`px-6 py-2 rounded-full font-black uppercase text-sm tracking-widest border border-white/20 ${status.isBreak ? 'bg-orange-500/20 text-orange-300' : 'bg-green-500/20 text-green-300'}`}>
+                 {status.isBreak ? '● Veliki odmor' : '● Čas u toku'}
+               </span>
+               <div className="text-right">
+                 <p className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">{status.isBreak ? 'Do početka' : 'Do zvona'}</p>
+                 <p className="text-6xl font-black font-mono tracking-tighter">{status.timer}</p>
+               </div>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center">
+               <h2 className="text-[5rem] lg:text-[7rem] leading-[0.9] font-black uppercase italic tracking-tighter mb-4 text-transparent bg-clip-text bg-gradient-to-r from-white to-blue-200">
+                 {status.subject}
+               </h2>
+               <p className="text-2xl font-bold text-white/60 uppercase tracking-widest flex items-center gap-3">
+                 KABINET: <span className="text-white bg-white/20 px-4 py-1 rounded-lg">{status.room}</span>
+               </p>
+            </div>
+
+            {/* DEŽURNI NASTAVNIK - FIXIRANO DOLE */}
+            <div className="mt-auto pt-8 border-t border-white/10 flex items-center gap-6">
+               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-blue-600/40">
+                 <User size={32} />
+               </div>
+               <div>
+                 <p className="text-blue-300 text-xs font-black uppercase tracking-widest mb-1">Dežurni nastavnik</p>
+                 <p className="text-2xl font-bold uppercase">{data.duty?.teacher_name || "Nema podataka"}</p>
+               </div>
+            </div>
+          </div>
+
+          {/* DESNO: SLAJDOVI (5 kolona) */}
+          <div className="col-span-5 flex flex-col gap-6">
+             {/* GORNJA KARTICA - SLAJDER */}
+             <div className="flex-1 bg-gradient-to-br from-blue-600 to-blue-800 rounded-[3rem] shadow-2xl p-10 relative overflow-hidden flex flex-col justify-center text-center border border-white/10">
+                {/* Animirani sadržaj */}
+                {activeSlide === 0 && (
+                   <div className="animate-in fade-in zoom-in duration-700">
+                      <Bell size={60} className="mx-auto mb-6 text-blue-200" />
+                      <h3 className="text-xl font-black uppercase tracking-widest text-blue-200 mb-6">Obaveštenje</h3>
+                      <p className="text-3xl font-bold italic leading-snug">"{data.ann[0]?.text || "Dobrodošli u školu!"}"</p>
+                   </div>
+                )}
+                {activeSlide === 1 && (
+                   <div className="animate-in slide-in-from-right duration-700">
+                      <Sun size={80} className="mx-auto mb-6 text-yellow-300 animate-spin-slow" />
+                      <h3 className="text-7xl font-black">24°C</h3>
+                      <p className="mt-4 font-bold uppercase opacity-60">Sunčano</p>
+                   </div>
+                )}
+                {activeSlide === 2 && (
+                   <div className="animate-in slide-in-from-bottom duration-700">
+                      <Cake size={60} className="mx-auto mb-6 text-pink-300" />
+                      <h3 className="text-xl font-black uppercase tracking-widest text-pink-200 mb-6">Slavljenici</h3>
+                      <div className="space-y-2">
+                        {data.bdays.slice(0,3).map((b,i) => (
+                           <div key={i} className="bg-white/10 p-3 rounded-xl font-bold uppercase">{b.name}</div>
+                        ))}
+                        {data.bdays.length === 0 && <p>Nema rođendana danas</p>}
+                      </div>
+                   </div>
+                )}
+                {activeSlide === 3 && (
+                   <div className="animate-in fade-in duration-1000">
+                      <Quote size={60} className="mx-auto mb-6 text-white/30" />
+                      <p className="text-2xl font-medium italic mb-6">"{data.quotes[0]?.text}"</p>
+                      <p className="font-black uppercase text-sm tracking-widest">— {data.quotes[0]?.author}</p>
+                   </div>
+                )}
+                
+                {/* Progress bar */}
+                <div className="absolute bottom-0 left-0 h-2 bg-white/30 w-full">
+                   <div className="h-full bg-white animate-[progress_10s_linear_infinite]" style={{width: '100%'}} />
+                </div>
+             </div>
+          </div>
         </div>
+
+        {/* FOOTER: MARQUEE VESTI */}
+        {status.news && (
+          <div className="h-20 bg-white/90 backdrop-blur-md rounded-2xl flex items-center overflow-hidden shadow-lg z-20">
+             <div className="bg-blue-600 h-full px-8 flex items-center justify-center font-black uppercase text-white tracking-widest text-xl shrink-0">
+               Info
+             </div>
+             <div className="flex-1 overflow-hidden whitespace-nowrap text-slate-900 text-2xl font-bold uppercase italic items-center flex">
+               <div className="animate-marquee inline-block">
+                 {status.news} &nbsp; • &nbsp; {status.news} &nbsp; • &nbsp; {status.news} &nbsp; • &nbsp; {status.news}
+               </div>
+             </div>
+          </div>
+        )}
+
       </div>
-
-      {/* 3. GLAVNI BLOKOVI (SREDINA) */}
-      <div className="flex-1 grid grid-cols-3 gap-6 z-10 min-h-0">
-        
-        {/* LEVA STRANA: STATUS ČASA (2/3 ekrana) */}
-        <div className="col-span-2 bg-white rounded-[3rem] p-12 flex flex-col text-slate-900 border-b-[15px] border-blue-600">
-           <div className="flex items-center gap-3 mb-10">
-              <div className={`w-4 h-4 rounded-full ${status.isBreak ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'}`} />
-              <span className="font-black text-2xl uppercase text-slate-400 tracking-widest">
-                {status.isBreak ? 'VELIKI ODMOR' : 'NASTAVA JE U TOKU'}
-              </span>
-           </div>
-
-           <div className="flex-1 flex flex-col justify-center items-center text-center">
-             {status.activeClass ? (
-               <>
-                 <h2 className="text-[18vh] font-black leading-none tracking-tighter italic mb-8">
-                   {status.activeClass.class_name}
-                 </h2>
-                 <div className="bg-slate-900 text-white text-[8vh] font-black px-20 py-5 rounded-[3rem] shadow-2xl">
-                   {status.activeClass.room}
-                 </div>
-               </>
-             ) : (
-               <div className="opacity-10 text-9xl font-black uppercase rotate-[-5deg]">KRAJ SMENE</div>
-             )}
-           </div>
-
-           {/* DEŽURSTVO (FIKSIRANO NA DNU LEVE KARTICE) */}
-           <div className="mt-auto pt-8 border-t-4 border-slate-50 flex justify-between items-end">
-              <div>
-                <p className="text-slate-400 font-black uppercase text-xs mb-1 tracking-widest">Dežurni Nastavnik</p>
-                <p className="text-4xl font-black uppercase italic text-blue-600">{data.duty.teacher_name || '---'}</p>
-              </div>
-              <div className="bg-slate-100 p-4 rounded-2xl border-4 border-slate-900 shadow-lg">
-                <Clock size={50} className="text-slate-900" />
-              </div>
-           </div>
-        </div>
-
-        {/* DESNA STRANA: SLAJDOVI */}
-        <div className="col-span-1 bg-blue-600 rounded-[3rem] p-12 flex flex-col justify-center relative overflow-hidden shadow-2xl">
-          {slide === 0 && (
-            <div className="animate-in fade-in zoom-in duration-500 text-center">
-              <Bell size={100} className="mx-auto mb-8 text-white/20" />
-              <h3 className="text-3xl font-black uppercase italic mb-6">Obaveštenje</h3>
-              <p className="text-4xl font-bold leading-tight italic">"{data.ann[0]?.text || "Dobrodošli!"}"</p>
-            </div>
-          )}
-          {slide === 1 && (
-            <div className="animate-in slide-in-from-right duration-500 text-center">
-              <Sun size={150} className="mx-auto mb-8 text-yellow-400 animate-pulse" />
-              <h3 className="text-[10vh] font-black leading-none">22°C</h3>
-              <p className="text-2xl font-black uppercase tracking-[0.5em] mt-4 opacity-60">Beograd</p>
-            </div>
-          )}
-          {slide === 2 && (
-            <div className="animate-in slide-in-from-bottom duration-500">
-              <Cake size={80} className="mb-6 text-pink-300" />
-              <h3 className="text-3xl font-black uppercase mb-8 italic">Rođendani</h3>
-              <div className="space-y-4">
-                {data.bdays.slice(0, 3).map((b, i) => (
-                  <div key={i} className="bg-white/10 p-5 rounded-2xl border-l-8 border-white font-black uppercase">
-                    {b.name} ({b.class_name})
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {slide === 3 && (
-            <div className="animate-in fade-in duration-1000 text-center italic">
-              <Quote size={80} className="mx-auto mb-8 text-white/10" />
-              <p className="text-3xl font-bold leading-snug">"{data.quotes[0]?.text}"</p>
-              <p className="mt-8 text-blue-200 font-black uppercase tracking-widest">— {data.quotes[0]?.author}</p>
-            </div>
-          )}
-          {/* Progress bar slajda */}
-          <div className="absolute bottom-0 left-0 h-3 bg-white/30 animate-[progress_10s_linear_infinite]" />
-        </div>
-      </div>
-
-      {/* 4. FOOTER (HITNE VESTI) */}
-      {status.news && (
-        <div className="h-[8vh] bg-blue-800 rounded-[2rem] border-2 border-blue-400 flex items-center overflow-hidden z-10 shadow-2xl">
-           <div className="bg-white text-blue-900 px-10 h-full flex items-center font-black italic text-2xl uppercase z-20">VESTI</div>
-           <div className="flex-1 whitespace-nowrap overflow-hidden">
-             <p className="inline-block animate-marquee text-white text-4xl font-black uppercase italic tracking-widest py-2">
-               {status.news} &nbsp;&nbsp;&nbsp; ★ &nbsp;&nbsp;&nbsp; {status.news}
-             </p>
-           </div>
-        </div>
-      )}
 
       <style jsx>{`
         @keyframes progress { from { width: 0%; } to { width: 100%; } }
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
-        .animate-marquee { display: inline-block; animation: marquee 20s linear infinite; }
+        .animate-marquee { animation: marquee 30s linear infinite; }
+        .animate-spin-slow { animation: spin 10s linear infinite; }
       `}</style>
     </div>
   );
